@@ -978,9 +978,10 @@
         return sessionHelper.ensureFreshSession({ apiHost });
       };
 
-      const resolveRequestContext = () => {
+      const resolveRequestContext = context => {
         const parentConfig = resolveParentConfig();
         const session = parseBackofficeSession();
+        const contextCredentials = resolveBackofficeCredentialsFromContext(context);
         const requestedAccountId =
           parseAccountId(urlParams.get('accountId')) ||
           parseAccountId(parentConfig?.accountId);
@@ -1002,6 +1003,8 @@
         const tenantId = uniq([
           urlParams.get('tenantId'),
           urlParams.get('tenant'),
+          contextCredentials.tenantId,
+          contextCredentials.platform,
           parentConfig?.tenantId,
           parentConfig?.tenant,
           parentConfig?.activeTenantId,
@@ -1020,23 +1023,34 @@
         const backofficeApiToken = resolveBackofficeApiToken({
           session,
           activeTenant,
-        });
+        }) || contextCredentials.backofficeApiToken;
         const bearerToken = resolveBearerToken({
           session,
           activeTenant,
-        });
+        }) || contextCredentials.bearerToken;
         const effectiveBearerToken = bearerToken || backofficeApiToken;
-        const apiHost = resolveApiHost({ parentConfig, session });
+        const apiHost =
+          normalizeApiHost(contextCredentials.apiHost) ||
+          resolveApiHost({ parentConfig, session });
 
-        if (!tenantId || !backofficeApiToken || !effectiveBearerToken) {
+        const hasLegacySessionContext =
+          Boolean(tenantId) &&
+          Boolean(backofficeApiToken) &&
+          Boolean(effectiveBearerToken);
+        const hasContactCredentialContext =
+          Boolean(contextCredentials.appUser) &&
+          Boolean(contextCredentials.appPassword) &&
+          Boolean(contextCredentials.platform);
+
+        if (!hasLegacySessionContext && !hasContactCredentialContext) {
           const missingContextFields = [];
-          if (!tenantId) {
+          if (!tenantId && !contextCredentials.platform) {
             missingContextFields.push('tenantId');
           }
-          if (!backofficeApiToken) {
+          if (!backofficeApiToken && !contextCredentials.appPassword) {
             missingContextFields.push('backofficeApiToken');
           }
-          if (!effectiveBearerToken) {
+          if (!effectiveBearerToken && !contextCredentials.appUser) {
             missingContextFields.push('bearerToken');
           }
 
@@ -1061,12 +1075,31 @@
 
         const headers = {
           Accept: 'application/json',
-          Authorization: `Bearer ${effectiveBearerToken}`,
-          'x-tenant-id': tenantId,
-          'x-tenant': tenantId,
         };
 
+        if (effectiveBearerToken) {
+          headers.Authorization = `Bearer ${effectiveBearerToken}`;
+        }
+
+        if (tenantId) {
+          headers['x-tenant-id'] = tenantId;
+          headers['x-tenant'] = tenantId;
+        }
+
         setTokenHeaders({ headers, token: backofficeApiToken });
+
+        if (contextCredentials.appUser) {
+          headers['x-app-user'] = contextCredentials.appUser;
+        }
+
+        if (contextCredentials.appPassword) {
+          headers['x-app-password'] = contextCredentials.appPassword;
+        }
+
+        if (contextCredentials.platform) {
+          headers['x-platform'] = contextCredentials.platform;
+          headers['x-client-platform'] = contextCredentials.platform;
+        }
 
         if (accountId) {
           headers['x-account-id'] = String(accountId);
@@ -1168,6 +1201,27 @@
         };
       };
 
+      const resolveContactAttributes = context => {
+        const { contact, sender } = resolveContact(context);
+        const contactCustomAttributes = contact?.custom_attributes || {};
+        const senderCustomAttributes = sender?.custom_attributes || {};
+        const contactAdditionalAttributes = contact?.additional_attributes || {};
+        const senderAdditionalAttributes = sender?.additional_attributes || {};
+
+        return {
+          contact,
+          sender,
+          customAttributes: {
+            ...senderCustomAttributes,
+            ...contactCustomAttributes,
+          },
+          additionalAttributes: {
+            ...senderAdditionalAttributes,
+            ...contactAdditionalAttributes,
+          },
+        };
+      };
+
       const extractValueByKeys = (source, keys) => {
         if (!source || typeof source !== 'object') {
           return '';
@@ -1183,12 +1237,19 @@
       };
 
       const resolveKnownPlayerIdCandidates = ({ contact, sender }) => {
-        const customAttributes = contact?.custom_attributes || {};
-        const additionalAttributes = contact?.additional_attributes || {};
+        const customAttributes = {
+          ...(sender?.custom_attributes || {}),
+          ...(contact?.custom_attributes || {}),
+        };
+        const additionalAttributes = {
+          ...(sender?.additional_attributes || {}),
+          ...(contact?.additional_attributes || {}),
+        };
 
         const knownKeys = [
           'playerId',
           'player_id',
+          'playerid',
           'playerUUID',
           'player_uuid',
           'jugadorId',
@@ -1216,8 +1277,14 @@
       };
 
       const resolveIdentity = ({ contact, sender }) => {
-        const customAttributes = contact?.custom_attributes || {};
-        const additionalAttributes = contact?.additional_attributes || {};
+        const customAttributes = {
+          ...(sender?.custom_attributes || {}),
+          ...(contact?.custom_attributes || {}),
+        };
+        const additionalAttributes = {
+          ...(sender?.additional_attributes || {}),
+          ...(contact?.additional_attributes || {}),
+        };
 
         const emails = uniq([
           contact?.email,
@@ -1246,8 +1313,11 @@
         const usernames = uniq([
           contact?.identifier,
           contact?.username,
+          contact?.name,
           sender?.identifier,
           sender?.username,
+          sender?.name,
+          customAttributes?.appuser,
           urlParams.get('identifier'),
         ]).map(value => normalizeText(value));
 
@@ -1265,6 +1335,71 @@
           phones,
           usernames,
           platformIds,
+        };
+      };
+
+      const resolveBackofficeCredentialsFromContext = context => {
+        const { customAttributes, additionalAttributes } =
+          resolveContactAttributes(context);
+
+        const appUser = extractValueByKeys(customAttributes, [
+          'appuser',
+          'appUser',
+          'username',
+        ]);
+        const appPassword = extractValueByKeys(customAttributes, [
+          'apppassword',
+          'appPassword',
+          'password',
+          'api_access_token',
+          'apiAccessToken',
+          'token',
+        ]);
+        const platform = extractValueByKeys(customAttributes, [
+          'platform',
+          'tenant',
+          'tenantId',
+          'tenant_id',
+        ]);
+
+        const backofficeApiToken = extractValueByKeys(customAttributes, [
+          'backofficeApiToken',
+          'backoffice_api_token',
+          'backofficeApiAccessToken',
+          'backoffice_api_access_token',
+          'apiAccessToken',
+          'api_access_token',
+          'token',
+          'apppassword',
+        ]);
+
+        const bearerToken = extractValueByKeys(customAttributes, [
+          'bearerToken',
+          'bearer_token',
+          'jwt',
+          'token',
+        ]);
+
+        const tenantId = extractValueByKeys(customAttributes, [
+          'tenantId',
+          'tenant_id',
+          'tenant',
+          'platform',
+        ]);
+
+        return {
+          appUser,
+          appPassword,
+          platform,
+          backofficeApiToken,
+          bearerToken,
+          tenantId,
+          apiHost: extractValueByKeys(additionalAttributes, [
+            'backofficeApiHost',
+            'backoffice_api_host',
+            'apiHost',
+            'api_host',
+          ]),
         };
       };
 
@@ -1777,7 +1912,7 @@
 
         let requestContext = null;
         try {
-          requestContext = resolveRequestContext();
+          requestContext = resolveRequestContext(state.context);
         } catch (error) {
           const shouldRetryMissingContext =
             error?.code === 'MISSING_BACKOFFICE_CONTEXT' && Boolean(sessionHelper);
@@ -1796,7 +1931,7 @@
             throw error;
           }
 
-          requestContext = resolveRequestContext();
+          requestContext = resolveRequestContext(state.context);
         }
 
         const playerId = await resolvePlayerId({
@@ -1955,13 +2090,31 @@
       };
 
       window.addEventListener('message', function (event) {
-        if (!isJSONValid(event.data)) {
-          console.log('[Dashboard App] Mensaje ignorado (no JSON valido):', event);
+        console.log('[Dashboard App] Mensaje recibido:', event);
+
+        let eventData = null;
+        if (typeof event.data === 'string') {
+          if (!isJSONValid(event.data)) {
+            console.log('[Dashboard App] Mensaje ignorado (no JSON valido):', event);
+            return;
+          }
+
+          eventData = JSON.parse(event.data);
+        } else if (event.data && typeof event.data === 'object') {
+          eventData = event.data;
+        }
+
+        if (!eventData || typeof eventData !== 'object') {
           return;
         }
 
-        console.log('[Dashboard App] Mensaje recibido:', event);
-        const eventData = JSON.parse(event.data);
+        if (
+          eventData.event !== 'appContext' &&
+          eventData?.data?.event === 'appContext'
+        ) {
+          eventData = eventData.data;
+        }
+
         console.log('[Dashboard App] eventData parseado:', eventData);
 
         if (!eventData || eventData.event !== 'appContext') {
