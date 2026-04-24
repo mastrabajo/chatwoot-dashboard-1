@@ -264,6 +264,7 @@
     <script>
       const BACKOFFICE_SESSION_STORAGE_KEY = 'cw_frontend_backoffice_session';
       const DEFAULT_BACKOFFICE_API_HOST = 'https://api-bko.jugaygana.site';
+      const BACKOFFICE_DOMAIN_TOKEN = 'Y3bqh7E5Qqlb57c';
       const sessionHelper = window.CWConversationModuleSession || null;
       const UUID_PATTERN =
         /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -924,7 +925,9 @@
       };
 
       const resolveApiHost = ({ parentConfig, session }) => {
-        const queryHost = normalizeApiHost(urlParams.get('apiHost'));
+        const queryHost = normalizeApiHost(
+          urlParams.get('apihost') || urlParams.get('apiHost')
+        );
         const runtimeHost = normalizeApiHost(
           parentConfig?.backofficeApiHost || parentConfig?.backoffice_api_host
         );
@@ -1075,6 +1078,7 @@
 
         const headers = {
           Accept: 'application/json',
+          'x-domain-token': BACKOFFICE_DOMAIN_TOKEN,
         };
 
         if (effectiveBearerToken) {
