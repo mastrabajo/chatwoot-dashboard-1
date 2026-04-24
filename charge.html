@@ -1941,22 +1941,34 @@
         loadPlayerFinancialData();
       });
 
-      window.addEventListener('message', event => {
-        let payload = event.data;
-
-        if (typeof payload === 'string') {
-          try {
-            payload = JSON.parse(payload);
-          } catch {
-            return;
-          }
+      const isJSONValid = value => {
+        if (typeof value !== 'string') {
+          return false;
         }
 
-        if (!payload || payload.event !== 'appContext') {
+        try {
+          JSON.parse(value);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+
+      window.addEventListener('message', function (event) {
+        if (!isJSONValid(event.data)) {
+          console.log('[Dashboard App] Mensaje ignorado (no JSON valido):', event);
           return;
         }
 
-        state.context = payload.data || {};
+        console.log('[Dashboard App] Mensaje recibido:', event);
+        const eventData = JSON.parse(event.data);
+        console.log('[Dashboard App] eventData parseado:', eventData);
+
+        if (!eventData || eventData.event !== 'appContext') {
+          return;
+        }
+
+        state.context = eventData.data || {};
         updateMetaFromContext(state.context);
         loadPlayerFinancialData();
       });
