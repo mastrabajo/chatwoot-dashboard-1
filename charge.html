@@ -1,0 +1,1973 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Loads and Withdrawals</title>
+    <style>
+      :root {
+        --bg: #f7faf7;
+        --surface: #ffffff;
+        --text: #122017;
+        --muted: #5f6c63;
+        --good: #138a4f;
+        --bad: #c03632;
+        --info: #1458d8;
+        --warning: #8f5b10;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(180deg, #edf8f0 0%, #f7faf7 100%);
+        color: var(--text);
+      }
+
+      .wrapper {
+        max-width: 980px;
+        margin: 16px auto;
+        padding: 0 14px;
+      }
+
+      .panel {
+        background: var(--surface);
+        border: 1px solid #d8e8dd;
+        border-radius: 14px;
+        box-shadow: 0 12px 32px rgba(9, 30, 17, 0.08);
+        overflow: hidden;
+      }
+
+      .header {
+        padding: 16px;
+        border-bottom: 1px solid #e3efe7;
+      }
+
+      .title {
+        margin: 0;
+        font-size: 22px;
+      }
+
+      .meta {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 10px;
+        padding: 12px 16px;
+      }
+
+      .kpi {
+        border: 1px solid #e2ece5;
+        border-radius: 12px;
+        padding: 10px;
+        background: #fbfefc;
+      }
+
+      .kpi-label {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .kpi-value {
+        margin-top: 5px;
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      .kpi-value-small {
+        font-size: 14px;
+      }
+
+      .kpi-sub {
+        margin-top: 3px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .good {
+        color: var(--good);
+      }
+
+      .bad {
+        color: var(--bad);
+      }
+
+      .status {
+        margin: 0 16px 12px;
+        border: 1px solid #dbe8de;
+        border-radius: 10px;
+        background: #f7fbf8;
+        padding: 9px 12px;
+        font-size: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .status strong {
+        color: var(--info);
+      }
+
+      .status.warning strong {
+        color: var(--warning);
+      }
+
+      .status.error {
+        border-color: #f2d0ce;
+        background: #fff5f5;
+      }
+
+      .status.error strong {
+        color: var(--bad);
+      }
+
+      .status button {
+        border: 1px solid #c9d9cc;
+        background: #ffffff;
+        color: var(--text);
+        border-radius: 8px;
+        padding: 6px 10px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+
+      .status button:hover {
+        border-color: #9ab8a0;
+      }
+
+      .details {
+        padding: 0 16px 10px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        text-align: left;
+        padding: 10px 12px;
+        border-top: 1px solid #ebf3ee;
+        font-size: 13px;
+        vertical-align: top;
+      }
+
+      th {
+        font-size: 12px;
+        color: var(--muted);
+        background: #f7fbf8;
+      }
+
+      .amount {
+        font-weight: 700;
+      }
+
+      .status-pill {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: #eef3ef;
+        color: #31503b;
+        font-size: 11px;
+      }
+
+      .empty {
+        color: var(--muted);
+        font-style: italic;
+      }
+
+      .hint {
+        margin: 0;
+        padding: 10px 16px 14px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrapper">
+      <section class="panel">
+        <header class="header">
+          <h1 class="title">Cargas y Retiros</h1>
+          <div class="meta" id="meta">Esperando contexto del chat...</div>
+        </header>
+
+        <div class="summary">
+          <article class="kpi">
+            <div class="kpi-label">Total Cargas</div>
+            <div class="kpi-value good" id="loadsTotal">0</div>
+            <div class="kpi-sub" id="loadsCount">0 movimientos</div>
+          </article>
+          <article class="kpi">
+            <div class="kpi-label">Total Retiros</div>
+            <div class="kpi-value bad" id="withdrawalsTotal">0</div>
+            <div class="kpi-sub" id="withdrawalsCount">0 movimientos</div>
+          </article>
+          <article class="kpi">
+            <div class="kpi-label">Neto</div>
+            <div class="kpi-value" id="netTotal">0</div>
+            <div class="kpi-sub" id="source">Fuente: -</div>
+          </article>
+          <article class="kpi">
+            <div class="kpi-label">Player ID</div>
+            <div class="kpi-value kpi-value-small" id="playerId">-</div>
+            <div class="kpi-sub" id="lastUpdated">Ultima actualizacion: -</div>
+          </article>
+        </div>
+
+        <div class="status" id="statusBox">
+          <strong id="statusTitle">Inicializando modulo</strong>
+          <button type="button" id="refreshButton">Actualizar</button>
+        </div>
+
+        <div class="details">
+          <span id="currencyDetails">Monedas: -</span>
+          <span id="rowsCount">Filas: 0</span>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Tipo</th>
+              <th>Estado</th>
+              <th>Monto</th>
+              <th>Moneda</th>
+              <th>Referencia</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+
+        <p class="hint">
+          Datos desde Backoffice: transfer receipts por jugador. Si falla ese fetch, usa balance movements como fallback tecnico.
+        </p>
+      </section>
+    </main>
+
+    <script src="/conversation-modules/shared/session-utils.js"></script>
+    <script>
+      const BACKOFFICE_SESSION_STORAGE_KEY = 'cw_frontend_backoffice_session';
+      const DEFAULT_BACKOFFICE_API_HOST = 'https://api-bko.jugaygana.site';
+      const sessionHelper = window.CWConversationModuleSession || null;
+      const UUID_PATTERN =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+      const PAYMENT_STATUS_POSITIVE_KEYWORDS = [
+        'approved',
+        'aprob',
+        'confirm',
+        'complet',
+        'success',
+        'paid',
+        'cobrad',
+        'matched',
+        'valid',
+      ];
+      const PAYMENT_STATUS_NEGATIVE_KEYWORDS = [
+        'pending',
+        'reject',
+        'rechaz',
+        'cancel',
+        'fail',
+        'error',
+        'declin',
+        'expire',
+        'void',
+        'refun',
+        'chargeback',
+      ];
+
+      const PLAYER_TRANSFER_RECEIPT_TYPES = {
+        INCOMING: 0,
+        OUTGOING: 1,
+      };
+      const TRANSFER_RECEIPT_INCOMING_KEYWORDS = [
+        'incoming',
+        'ingres',
+        'carga',
+        'deposit',
+        'credit',
+        'credito',
+      ];
+      const TRANSFER_RECEIPT_OUTGOING_KEYWORDS = [
+        'outgoing',
+        'egres',
+        'egreso',
+        'withdraw',
+        'withdrawal',
+        'debit',
+        'debito',
+        'retiro',
+        'retir',
+        'retirada',
+        'extrac',
+        'cashout',
+        'cash out',
+        'payout',
+        'outbound',
+        'salida',
+        'premio',
+      ];
+
+      const PAYMENT_MOVEMENT_POSITIVE_KEYWORDS = [
+        'deposit',
+        'credit',
+        'ingres',
+        'carga',
+        'topup',
+        'cobro',
+        'pago',
+      ];
+      const PAYMENT_MOVEMENT_WITHDRAWAL_KEYWORDS = [
+        'withdraw',
+        'debit',
+        'retiro',
+        'retir',
+        'extrac',
+        'cashout',
+        'payout',
+      ];
+
+      const rowsEl = document.getElementById('rows');
+      const metaEl = document.getElementById('meta');
+      const loadsTotalEl = document.getElementById('loadsTotal');
+      const withdrawalsTotalEl = document.getElementById('withdrawalsTotal');
+      const netTotalEl = document.getElementById('netTotal');
+      const loadsCountEl = document.getElementById('loadsCount');
+      const withdrawalsCountEl = document.getElementById('withdrawalsCount');
+      const sourceEl = document.getElementById('source');
+      const playerIdEl = document.getElementById('playerId');
+      const lastUpdatedEl = document.getElementById('lastUpdated');
+      const statusBoxEl = document.getElementById('statusBox');
+      const statusTitleEl = document.getElementById('statusTitle');
+      const refreshButtonEl = document.getElementById('refreshButton');
+      const currencyDetailsEl = document.getElementById('currencyDetails');
+      const rowsCountEl = document.getElementById('rowsCount');
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const state = {
+        context: null,
+        playerId: '',
+        rows: [],
+        source: 'none',
+        loading: false,
+      };
+
+      const formatNumber = value =>
+        new Intl.NumberFormat('es-UY', {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2,
+        }).format(value || 0);
+
+      const formatDate = timestamp => {
+        if (typeof timestamp !== 'number' || Number.isNaN(timestamp)) {
+          return '-';
+        }
+
+        try {
+          return new Intl.DateTimeFormat('es-UY', {
+            dateStyle: 'short',
+            timeStyle: 'short',
+          }).format(new Date(timestamp));
+        } catch {
+          return new Date(timestamp).toISOString();
+        }
+      };
+
+      const escapeHTML = value =>
+        String(value ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+
+      const normalizeText = value =>
+        String(value || '')
+          .trim()
+          .toLowerCase();
+
+      const uniq = values => {
+        const seen = new Set();
+        return (Array.isArray(values) ? values : []).filter(value => {
+          const normalized = String(value || '').trim();
+          if (!normalized || seen.has(normalized)) {
+            return false;
+          }
+
+          seen.add(normalized);
+          return true;
+        });
+      };
+
+      const hasKeywordMatch = (value, keywords) => {
+        if (!value) {
+          return false;
+        }
+
+        return (Array.isArray(keywords) ? keywords : []).some(keyword =>
+          value.includes(keyword)
+        );
+      };
+
+      const parseIntegerValue = value => {
+        if (typeof value === 'number') {
+          return Number.isFinite(value) ? Math.trunc(value) : null;
+        }
+
+        if (typeof value !== 'string') {
+          return null;
+        }
+
+        const parsed = Number(value.trim());
+        return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+      };
+
+      const parseMoneyAmount = value => {
+        if (typeof value === 'number') {
+          return Number.isFinite(value) ? value : null;
+        }
+
+        if (typeof value !== 'string') {
+          return null;
+        }
+
+        const normalizedValue = value.trim();
+        if (!normalizedValue) {
+          return null;
+        }
+
+        const compactValue = normalizedValue.replace(/\s/g, '');
+        const hasComma = compactValue.includes(',');
+        const hasDot = compactValue.includes('.');
+
+        let numericCandidate = compactValue;
+
+        if (hasComma && hasDot) {
+          const lastCommaIndex = compactValue.lastIndexOf(',');
+          const lastDotIndex = compactValue.lastIndexOf('.');
+
+          if (lastCommaIndex > lastDotIndex) {
+            numericCandidate = compactValue.replace(/\./g, '').replace(',', '.');
+          } else {
+            numericCandidate = compactValue.replace(/,/g, '');
+          }
+        } else if (hasComma && !hasDot) {
+          numericCandidate = compactValue.replace(',', '.');
+        }
+
+        const parsed = Number(numericCandidate);
+        return Number.isFinite(parsed) ? parsed : null;
+      };
+
+      const normalizePhone = value => String(value || '').replace(/\D/g, '');
+
+      const resolveTimestampValue = value => {
+        if (value === null || value === undefined || value === '') {
+          return null;
+        }
+
+        if (typeof value === 'number') {
+          if (!Number.isFinite(value)) {
+            return null;
+          }
+
+          return value < 1e12 ? Math.round(value * 1000) : Math.round(value);
+        }
+
+        const normalized = String(value).trim();
+        if (!normalized) {
+          return null;
+        }
+
+        if (/^\d+(\.\d+)?$/.test(normalized)) {
+          const numericValue = Number(normalized);
+          if (!Number.isFinite(numericValue)) {
+            return null;
+          }
+
+          return numericValue < 1e12
+            ? Math.round(numericValue * 1000)
+            : Math.round(numericValue);
+        }
+
+        const parsed = Date.parse(normalized);
+        return Number.isNaN(parsed) ? null : parsed;
+      };
+
+      const isLikelyConfirmedStatus = statusValue => {
+        const normalizedStatus = normalizeText(statusValue);
+        if (!normalizedStatus) {
+          return true;
+        }
+
+        if (hasKeywordMatch(normalizedStatus, PAYMENT_STATUS_NEGATIVE_KEYWORDS)) {
+          return false;
+        }
+
+        if (hasKeywordMatch(normalizedStatus, PAYMENT_STATUS_POSITIVE_KEYWORDS)) {
+          return true;
+        }
+
+        return true;
+      };
+
+      const resolveTransferReceiptTypeValue = receipt =>
+        parseIntegerValue(
+          receipt?.type ??
+            receipt?.transferType ??
+            receipt?.transfer_type ??
+            receipt?.direction ??
+            receipt?.movementDirection ??
+            receipt?.movement_direction
+        );
+
+      const resolveTransferReceiptTypeText = receipt =>
+        receipt?.typeText ??
+        receipt?.type_text ??
+        receipt?.transferTypeText ??
+        receipt?.transfer_type_text ??
+        receipt?.directionText ??
+        receipt?.direction_text ??
+        '';
+
+      const stringifyForKeywordMatch = value => {
+        if (value === null || value === undefined) {
+          return '';
+        }
+
+        if (typeof value === 'string') {
+          return value;
+        }
+
+        try {
+          return JSON.stringify(value);
+        } catch {
+          return '';
+        }
+      };
+
+      const buildTransferReceiptContextText = receipt => {
+        return normalizeText(
+          [
+            resolveTransferReceiptTypeText(receipt),
+            receipt?.origin,
+            receipt?.statusText,
+            receipt?.status_text,
+            receipt?.status,
+            receipt?.notes,
+            receipt?.description,
+            receipt?.transferUniqueId,
+            receipt?.transfer_unique_id,
+            stringifyForKeywordMatch(receipt?.metadata),
+          ]
+            .filter(Boolean)
+            .join(' ')
+        );
+      };
+
+      const resolveTransferReceiptDirection = receipt => {
+        const typeValue = resolveTransferReceiptTypeValue(receipt);
+
+        if (typeValue === PLAYER_TRANSFER_RECEIPT_TYPES.INCOMING) {
+          return 'incoming';
+        }
+
+        if (typeValue === PLAYER_TRANSFER_RECEIPT_TYPES.OUTGOING) {
+          return 'outgoing';
+        }
+
+        const normalizedTypeText = normalizeText(
+          resolveTransferReceiptTypeText(receipt)
+        );
+        if (normalizedTypeText) {
+          if (
+            hasKeywordMatch(
+              normalizedTypeText,
+              TRANSFER_RECEIPT_INCOMING_KEYWORDS
+            )
+          ) {
+            return 'incoming';
+          }
+
+          if (
+            hasKeywordMatch(
+              normalizedTypeText,
+              TRANSFER_RECEIPT_OUTGOING_KEYWORDS
+            )
+          ) {
+            return 'outgoing';
+          }
+        }
+
+        const normalizedContextText = buildTransferReceiptContextText(receipt);
+        if (normalizedContextText) {
+          if (
+            hasKeywordMatch(
+              normalizedContextText,
+              TRANSFER_RECEIPT_OUTGOING_KEYWORDS
+            )
+          ) {
+            return 'outgoing';
+          }
+
+          if (
+            hasKeywordMatch(
+              normalizedContextText,
+              TRANSFER_RECEIPT_INCOMING_KEYWORDS
+            )
+          ) {
+            return 'incoming';
+          }
+        }
+
+        const normalizedAmount = parseMoneyAmount(receipt?.amount);
+        if (normalizedAmount === null || normalizedAmount === 0) {
+          return null;
+        }
+
+        return normalizedAmount < 0 ? 'outgoing' : 'incoming';
+      };
+
+      const resolveMovementDirection = movement => {
+        const movementTypeText = normalizeText(
+          movement?.movementTypeText ??
+            movement?.movement_type_text ??
+            movement?.movementType ??
+            movement?.movement_type
+        );
+
+        if (
+          movementTypeText &&
+          hasKeywordMatch(movementTypeText, PAYMENT_MOVEMENT_WITHDRAWAL_KEYWORDS)
+        ) {
+          return 'outgoing';
+        }
+
+        if (
+          movementTypeText &&
+          hasKeywordMatch(movementTypeText, PAYMENT_MOVEMENT_POSITIVE_KEYWORDS)
+        ) {
+          return 'incoming';
+        }
+
+        const amount = parseMoneyAmount(movement?.amount);
+        if (amount === null || amount === 0) {
+          return null;
+        }
+
+        return amount < 0 ? 'outgoing' : 'incoming';
+      };
+
+      const normalizeCurrencyCode = value => {
+        const normalized = String(value || '').trim().toUpperCase();
+        return /^[A-Z]{3}$/.test(normalized) ? normalized : '-';
+      };
+
+      const parseAccountId = value => {
+        const parsed = Number(value);
+        if (Number.isNaN(parsed) || parsed <= 0) {
+          return null;
+        }
+
+        return parsed;
+      };
+
+      const parseBackofficeSession = () => {
+        if (sessionHelper?.parseSession) {
+          return sessionHelper.parseSession();
+        }
+
+        try {
+          const rawSession = window.localStorage.getItem(
+            BACKOFFICE_SESSION_STORAGE_KEY
+          );
+          if (!rawSession) {
+            return null;
+          }
+
+          return JSON.parse(rawSession);
+        } catch {
+          return null;
+        }
+      };
+
+      const resolveParentConfig = () => {
+        try {
+          if (window.parent && window.parent !== window) {
+            return window.parent.chatwootConfig || {};
+          }
+        } catch {
+          return {};
+        }
+
+        return window.chatwootConfig || {};
+      };
+
+      const parseTenantId = tenantId => {
+        const normalizedTenantId = String(tenantId || '').trim();
+        if (!normalizedTenantId) {
+          return '';
+        }
+
+        return normalizedTenantId.includes('::')
+          ? normalizedTenantId.split('::')[0]
+          : normalizedTenantId;
+      };
+
+      const parseTenantArray = value => {
+        if (!value) {
+          return [];
+        }
+
+        if (Array.isArray(value)) {
+          return value;
+        }
+
+        if (typeof value === 'object') {
+          return [value];
+        }
+
+        return [];
+      };
+
+      const resolveActiveTenant = ({ session, parentConfig, accountId }) => {
+        const tenants = [
+          ...parseTenantArray(session?.chatwoots),
+          ...parseTenantArray(session?.tenants),
+          ...parseTenantArray(parentConfig?.tenants),
+          ...parseTenantArray(parentConfig?.chatwoots),
+        ];
+
+        if (!tenants.length) {
+          return null;
+        }
+
+        if (accountId) {
+          const tenantByAccount = tenants.find(tenant => {
+            const tenantAccountId = parseAccountId(
+              tenant?.accountId ?? tenant?.account_id ?? tenant?.accountID
+            );
+
+            return tenantAccountId === accountId;
+          });
+
+          if (tenantByAccount) {
+            return tenantByAccount;
+          }
+        }
+
+        const findTenantByCandidateIds = candidateIds => {
+          const normalizedCandidateIds = uniq(candidateIds)
+            .map(candidate => parseTenantId(candidate))
+            .filter(Boolean);
+
+          if (!normalizedCandidateIds.length) {
+            return null;
+          }
+
+          return (
+            tenants.find(tenant => {
+              const tenantIds = uniq([
+                tenant?.tenantId,
+                tenant?.id,
+                tenant?.slug,
+                tenant?.key,
+              ])
+                .map(candidate => parseTenantId(candidate))
+                .filter(Boolean);
+
+              return tenantIds.some(tenantId =>
+                normalizedCandidateIds.includes(tenantId)
+              );
+            }) || null
+          );
+        };
+
+        const runtimeTenant = findTenantByCandidateIds([
+          parentConfig?.activeTenantId,
+          parentConfig?.tenantId,
+          parentConfig?.tenant,
+        ]);
+        if (runtimeTenant) {
+          return runtimeTenant;
+        }
+
+        const sessionTenant = findTenantByCandidateIds([
+          session?.selectedTenantId,
+          session?.tenantId,
+          session?.tenant,
+          session?.activeTenantId,
+        ]);
+        if (sessionTenant) {
+          return sessionTenant;
+        }
+
+        return tenants[0];
+      };
+
+      const resolveBackofficeApiToken = ({ session, activeTenant }) => {
+        if (sessionHelper?.resolveBackofficeApiToken) {
+          const helperToken = sessionHelper.resolveBackofficeApiToken(
+            session,
+            activeTenant
+          );
+          if (helperToken) {
+            return helperToken;
+          }
+        }
+
+        const tokenCandidates = uniq([
+          session?.backofficeApiAccessToken,
+          session?.backoffice_api_access_token,
+          session?.backofficeApiToken,
+          session?.backoffice_api_token,
+          session?.backofficeAccessToken,
+          session?.backoffice_access_token,
+          session?.apiAccessToken,
+          session?.api_access_token,
+          session?.apiToken,
+          session?.api_token,
+          session?.loginAccessToken,
+          session?.login_access_token,
+          session?.accessToken,
+          session?.access_token,
+          session?.apiKey,
+          session?.api_key,
+          session?.token,
+          activeTenant?.apiAccessToken,
+          activeTenant?.api_access_token,
+          activeTenant?.apiKey,
+          activeTenant?.api_key,
+          activeTenant?.accessToken,
+          activeTenant?.access_token,
+          activeTenant?.token,
+        ]);
+
+        return tokenCandidates[0] || '';
+      };
+
+      const resolveBearerToken = ({ session, activeTenant }) => {
+        if (sessionHelper?.resolveBearerToken) {
+          const helperToken = sessionHelper.resolveBearerToken(
+            session,
+            activeTenant
+          );
+          if (helperToken) {
+            return helperToken;
+          }
+        }
+
+        const sessionCandidates = uniq([
+          session?.chatwootBearerToken,
+          session?.chatwoot_bearer_token,
+          session?.backofficeBearerToken,
+          session?.backoffice_bearer_token,
+          session?.bearerToken,
+          session?.bearer_token,
+        ]);
+
+        if (sessionCandidates[0]) {
+          return sessionCandidates[0];
+        }
+
+        const tenantCandidates = uniq([
+          activeTenant?.accessToken,
+          activeTenant?.access_token,
+          activeTenant?.apiAccessToken,
+          activeTenant?.api_access_token,
+          activeTenant?.token,
+          activeTenant?.jwt,
+        ]);
+
+        return tenantCandidates[0] || '';
+      };
+
+      const setTokenHeaders = ({ headers, token }) => {
+        if (!token) {
+          return;
+        }
+
+        headers.api_access_token = token;
+        headers['x-access-token'] = token;
+        headers['access-token'] = token;
+        headers['x-api-access-token'] = token;
+      };
+
+      const normalizeApiHost = value => {
+        if (sessionHelper?.normalizeApiHost) {
+          return sessionHelper.normalizeApiHost(value);
+        }
+
+        const normalized = String(value || '').trim();
+        if (!normalized) {
+          return '';
+        }
+
+        return normalized.replace(/\/$/, '');
+      };
+
+      const resolveApiHost = ({ parentConfig, session }) => {
+        const queryHost = normalizeApiHost(urlParams.get('apiHost'));
+        const runtimeHost = normalizeApiHost(
+          parentConfig?.backofficeApiHost || parentConfig?.backoffice_api_host
+        );
+        const sessionHost = normalizeApiHost(
+          session?.backofficeApiHost || session?.backoffice_api_host
+        );
+
+        let localStorageHost = '';
+        try {
+          localStorageHost = normalizeApiHost(
+            window.localStorage.getItem('cw_backoffice_api_host')
+          );
+        } catch {
+          localStorageHost = '';
+        }
+
+        return (
+          queryHost ||
+          runtimeHost ||
+          sessionHost ||
+          localStorageHost ||
+          DEFAULT_BACKOFFICE_API_HOST
+        );
+      };
+
+      const isAuthError = error => {
+        if (sessionHelper?.isAuthError) {
+          return sessionHelper.isAuthError(error);
+        }
+
+        const status = error?.status || error?.response?.status;
+        return status === 401 || status === 403;
+      };
+
+      const ensureSessionReady = async ({ forceRefresh = false } = {}) => {
+        if (!sessionHelper) {
+          return { state: 'skipped' };
+        }
+
+        const parentConfig = resolveParentConfig();
+        const session = parseBackofficeSession();
+        const apiHost = resolveApiHost({ parentConfig, session });
+
+        if (forceRefresh) {
+          return sessionHelper.refreshSession({
+            apiHost,
+            force: true,
+          });
+        }
+
+        return sessionHelper.ensureFreshSession({ apiHost });
+      };
+
+      const resolveRequestContext = () => {
+        const parentConfig = resolveParentConfig();
+        const session = parseBackofficeSession();
+        const requestedAccountId =
+          parseAccountId(urlParams.get('accountId')) ||
+          parseAccountId(parentConfig?.accountId);
+        const activeTenant = resolveActiveTenant({
+          session,
+          parentConfig,
+          accountId: requestedAccountId,
+        });
+
+        const accountId =
+          requestedAccountId ||
+          parseAccountId(
+            activeTenant?.accountId ??
+              activeTenant?.account_id ??
+              activeTenant?.accountID
+          ) ||
+          parseAccountId(session?.accountId ?? session?.account_id);
+
+        const tenantId = uniq([
+          urlParams.get('tenantId'),
+          urlParams.get('tenant'),
+          parentConfig?.tenantId,
+          parentConfig?.tenant,
+          parentConfig?.activeTenantId,
+          session?.selectedTenantId,
+          session?.tenantId,
+          session?.tenant,
+          session?.activeTenantId,
+          activeTenant?.tenantId,
+          activeTenant?.id,
+          activeTenant?.slug,
+          activeTenant?.key,
+        ])
+          .map(candidate => parseTenantId(candidate))
+          .find(Boolean);
+
+        const backofficeApiToken = resolveBackofficeApiToken({
+          session,
+          activeTenant,
+        });
+        const bearerToken = resolveBearerToken({
+          session,
+          activeTenant,
+        });
+        const effectiveBearerToken = bearerToken || backofficeApiToken;
+        const apiHost = resolveApiHost({ parentConfig, session });
+
+        if (!tenantId || !backofficeApiToken || !effectiveBearerToken) {
+          const missingContextFields = [];
+          if (!tenantId) {
+            missingContextFields.push('tenantId');
+          }
+          if (!backofficeApiToken) {
+            missingContextFields.push('backofficeApiToken');
+          }
+          if (!effectiveBearerToken) {
+            missingContextFields.push('bearerToken');
+          }
+
+          const error = new Error(
+            `Credenciales o tenant faltantes en la sesion de backoffice (${missingContextFields.join(', ')}).`
+          );
+          error.code = 'MISSING_BACKOFFICE_CONTEXT';
+          error.details = {
+            tenantId,
+            hasBackofficeApiToken: Boolean(backofficeApiToken),
+            hasBearerToken: Boolean(effectiveBearerToken),
+            accountId,
+            availableTenantCount: [
+              ...parseTenantArray(session?.chatwoots),
+              ...parseTenantArray(session?.tenants),
+              ...parseTenantArray(parentConfig?.tenants),
+              ...parseTenantArray(parentConfig?.chatwoots),
+            ].length,
+          };
+          throw error;
+        }
+
+        const headers = {
+          Accept: 'application/json',
+          Authorization: `Bearer ${effectiveBearerToken}`,
+          'x-tenant-id': tenantId,
+          'x-tenant': tenantId,
+        };
+
+        setTokenHeaders({ headers, token: backofficeApiToken });
+
+        if (accountId) {
+          headers['x-account-id'] = String(accountId);
+        }
+
+        return {
+          headers,
+          tenantId,
+          accountId,
+          apiHost,
+        };
+      };
+
+      const normalizeListPayload = payload => {
+        if (Array.isArray(payload)) {
+          return payload;
+        }
+
+        if (!payload || typeof payload !== 'object') {
+          return [];
+        }
+
+        const listKeys = ['data', 'players', 'items', 'results', 'records', 'content', 'list'];
+        for (const key of listKeys) {
+          if (Array.isArray(payload[key])) {
+            return payload[key];
+          }
+
+          if (payload[key] && typeof payload[key] === 'object') {
+            for (const nestedKey of listKeys) {
+              if (Array.isArray(payload[key][nestedKey])) {
+                return payload[key][nestedKey];
+              }
+            }
+          }
+        }
+
+        return [];
+      };
+
+      const unwrapObjectData = payload => {
+        if (!payload || typeof payload !== 'object') {
+          return null;
+        }
+
+        if (payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data)) {
+          return payload.data;
+        }
+
+        return payload;
+      };
+
+      const buildURL = ({ base, params = {} }) => {
+        const url = new URL(base);
+        Object.entries(params).forEach(([key, value]) => {
+          if (value === null || value === undefined || value === '') {
+            return;
+          }
+
+          url.searchParams.set(key, String(value));
+        });
+
+        return url.toString();
+      };
+
+      const fetchJSON = async ({ url, headers, params = {} }) => {
+        const response = await fetch(buildURL({ base: url, params }), {
+          method: 'GET',
+          headers,
+          credentials: 'include',
+        });
+
+        let payload = null;
+        try {
+          payload = await response.json();
+        } catch {
+          payload = null;
+        }
+
+        if (!response.ok) {
+          const error = new Error(`Request failed: ${response.status}`);
+          error.status = response.status;
+          error.payload = payload;
+          throw error;
+        }
+
+        return payload;
+      };
+
+      const resolveContact = context => {
+        const conversation = context?.conversation || {};
+        const sender = conversation?.meta?.sender || {};
+        const contact = context?.contact || sender;
+
+        return {
+          contact,
+          sender,
+          conversation,
+        };
+      };
+
+      const extractValueByKeys = (source, keys) => {
+        if (!source || typeof source !== 'object') {
+          return '';
+        }
+
+        for (const key of keys) {
+          if (source[key] !== undefined && source[key] !== null && source[key] !== '') {
+            return String(source[key]).trim();
+          }
+        }
+
+        return '';
+      };
+
+      const resolveKnownPlayerIdCandidates = ({ contact, sender }) => {
+        const customAttributes = contact?.custom_attributes || {};
+        const additionalAttributes = contact?.additional_attributes || {};
+
+        const knownKeys = [
+          'playerId',
+          'player_id',
+          'playerUUID',
+          'player_uuid',
+          'jugadorId',
+          'jugador_id',
+          'idJugador',
+          'bkPlayerId',
+          'bk_player_id',
+          'externalPlayerId',
+          'external_player_id',
+        ];
+
+        const candidates = uniq([
+          urlParams.get('playerId'),
+          urlParams.get('player_id'),
+          extractValueByKeys(contact, knownKeys),
+          extractValueByKeys(sender, knownKeys),
+          extractValueByKeys(customAttributes, knownKeys),
+          extractValueByKeys(additionalAttributes, knownKeys),
+          contact?.identifier,
+          sender?.identifier,
+          urlParams.get('identifier'),
+        ]);
+
+        return candidates.filter(value => UUID_PATTERN.test(value));
+      };
+
+      const resolveIdentity = ({ contact, sender }) => {
+        const customAttributes = contact?.custom_attributes || {};
+        const additionalAttributes = contact?.additional_attributes || {};
+
+        const emails = uniq([
+          contact?.email,
+          sender?.email,
+          customAttributes?.email,
+          additionalAttributes?.email,
+          urlParams.get('email'),
+        ]).map(value => normalizeText(value));
+
+        const phones = uniq([
+          contact?.phone_number,
+          contact?.phoneNumber,
+          contact?.phone,
+          sender?.phone_number,
+          sender?.phoneNumber,
+          sender?.phone,
+          customAttributes?.phone,
+          customAttributes?.phone_number,
+          additionalAttributes?.phone,
+          additionalAttributes?.phone_number,
+          urlParams.get('phone'),
+        ])
+          .map(value => normalizePhone(value))
+          .filter(Boolean);
+
+        const usernames = uniq([
+          contact?.identifier,
+          contact?.username,
+          sender?.identifier,
+          sender?.username,
+          urlParams.get('identifier'),
+        ]).map(value => normalizeText(value));
+
+        const platformIds = uniq([
+          contact?.id,
+          contact?.identifier,
+          sender?.id,
+          sender?.identifier,
+          urlParams.get('contactId'),
+          urlParams.get('identifier'),
+        ]).map(value => String(value || '').trim());
+
+        return {
+          emails,
+          phones,
+          usernames,
+          platformIds,
+        };
+      };
+
+      const fetchPlayerByPlatformId = async ({
+        requestContext,
+        platformId,
+      }) => {
+        if (!platformId) {
+          return '';
+        }
+
+        const responsePayload = await fetchJSON({
+          url: `${requestContext.apiHost}/v1/players/by-platform-id`,
+          headers: requestContext.headers,
+          params: {
+            platformId,
+          },
+        });
+
+        const player = unwrapObjectData(responsePayload);
+        const playerId = String(
+          player?.id || player?.playerId || player?.player_id || ''
+        ).trim();
+
+        return UUID_PATTERN.test(playerId) ? playerId : '';
+      };
+
+      const fetchPlayersList = async ({ requestContext }) => {
+        const responsePayload = await fetchJSON({
+          url: `${requestContext.apiHost}/v1/players`,
+          headers: requestContext.headers,
+          params: {
+            tenantId: requestContext.tenantId,
+          },
+        });
+
+        return normalizeListPayload(responsePayload);
+      };
+
+      const matchPlayerIdFromPlayers = ({ players, identity }) => {
+        const playerRows = Array.isArray(players) ? players : [];
+
+        for (const player of playerRows) {
+          const playerId = String(player?.id || '').trim();
+          if (!UUID_PATTERN.test(playerId)) {
+            continue;
+          }
+
+          const playerEmail = normalizeText(player?.email);
+          const playerPhoneCandidates = [
+            normalizePhone(player?.phone),
+            normalizePhone(player?.phoneNumber),
+            normalizePhone(player?.phone_number),
+            normalizePhone(player?.agentPhone),
+          ].filter(Boolean);
+          const playerUsernameCandidates = [
+            normalizeText(player?.platformUsername),
+            normalizeText(player?.username),
+            normalizeText(player?.name),
+          ].filter(Boolean);
+          const playerPlatformId = String(player?.platformId || '').trim();
+
+          if (playerEmail && identity.emails.includes(playerEmail)) {
+            return playerId;
+          }
+
+          if (
+            playerPhoneCandidates.some(phone => identity.phones.includes(phone))
+          ) {
+            return playerId;
+          }
+
+          if (
+            playerUsernameCandidates.some(username =>
+              identity.usernames.includes(username)
+            )
+          ) {
+            return playerId;
+          }
+
+          if (playerPlatformId && identity.platformIds.includes(playerPlatformId)) {
+            return playerId;
+          }
+        }
+
+        return '';
+      };
+
+      const resolvePlayerId = async ({ context, requestContext }) => {
+        const { contact, sender } = resolveContact(context);
+        const knownCandidates = resolveKnownPlayerIdCandidates({
+          contact,
+          sender,
+        });
+
+        if (knownCandidates.length) {
+          return knownCandidates[0];
+        }
+
+        const identity = resolveIdentity({ contact, sender });
+
+        for (const platformId of identity.platformIds) {
+          try {
+            const resolvedPlayerId = await fetchPlayerByPlatformId({
+              requestContext,
+              platformId,
+            });
+            if (resolvedPlayerId) {
+              return resolvedPlayerId;
+            }
+          } catch {
+            // Continue with next strategy.
+          }
+        }
+
+        const players = await fetchPlayersList({ requestContext });
+        return matchPlayerIdFromPlayers({ players, identity });
+      };
+
+      const normalizeTransferReceiptRows = receipts => {
+        return (Array.isArray(receipts) ? receipts : [])
+          .map(receipt => {
+            const statusValue =
+              receipt?.statusText ?? receipt?.status_text ?? receipt?.status;
+            if (!isLikelyConfirmedStatus(statusValue)) {
+              return null;
+            }
+
+            const amount = parseMoneyAmount(receipt?.amount);
+            if (amount === null || amount === 0) {
+              return null;
+            }
+
+            const direction = resolveTransferReceiptDirection(receipt);
+            if (!direction) {
+              return null;
+            }
+
+            const timestamp = resolveTimestampValue(
+              receipt?.createdAt ??
+                receipt?.created_at ??
+                receipt?.date ??
+                receipt?.timestamp ??
+                receipt?.transferDate ??
+                receipt?.updatedAt ??
+                receipt?.updated_at
+            );
+
+            return {
+              timestamp,
+              dateLabel: formatDate(timestamp),
+              type: direction === 'incoming' ? 'Incoming' : 'Outgoing',
+              receiptId: String(receipt?.id || '').trim(),
+              status:
+                receipt?.statusText || receipt?.status_text || receipt?.status || '-',
+              amount: Math.abs(amount),
+              currency: normalizeCurrencyCode(
+                receipt?.currency || receipt?.currencyCode || receipt?.currency_code
+              ),
+              reference:
+                receipt?.transferUniqueId || receipt?.id || receipt?.walletPaymentId || '-',
+              source: 'transfer_receipts',
+            };
+          })
+          .filter(Boolean);
+      };
+
+      const normalizeBalanceMovementRows = movements => {
+        return (Array.isArray(movements) ? movements : [])
+          .map(movement => {
+            const statusValue =
+              movement?.statusText ?? movement?.status_text ?? movement?.status;
+            if (!isLikelyConfirmedStatus(statusValue)) {
+              return null;
+            }
+
+            const amount = parseMoneyAmount(movement?.amount);
+            if (amount === null || amount === 0) {
+              return null;
+            }
+
+            const direction = resolveMovementDirection(movement);
+            if (!direction) {
+              return null;
+            }
+
+            const timestamp = resolveTimestampValue(
+              movement?.createdAt ??
+                movement?.created_at ??
+                movement?.date ??
+                movement?.timestamp ??
+                movement?.updatedAt ??
+                movement?.updated_at
+            );
+
+            return {
+              timestamp,
+              dateLabel: formatDate(timestamp),
+              type: direction === 'incoming' ? 'Incoming' : 'Outgoing',
+              movementId: String(movement?.id || '').trim(),
+              transferReceiptId: String(
+                movement?.transferReceiptId || movement?.transfer_receipt_id || ''
+              ).trim(),
+              status:
+                movement?.statusText || movement?.status_text || movement?.status || '-',
+              amount: Math.abs(amount),
+              currency: normalizeCurrencyCode(
+                movement?.currency || movement?.currencyCode || movement?.currency_code
+              ),
+              reference: movement?.transferReceiptId || movement?.id || '-',
+              reconciliationEligible: Boolean(
+                movement?.transferReceiptId || movement?.transfer_receipt_id
+              ),
+              source: 'balance_movements',
+            };
+          })
+          .filter(Boolean);
+      };
+
+      const buildRowFingerprint = row => {
+        const roundedAmount = Number.isFinite(row?.amount)
+          ? Number(row.amount).toFixed(2)
+          : '0.00';
+        const timestampBucket =
+          typeof row?.timestamp === 'number' && Number.isFinite(row.timestamp)
+            ? Math.round(row.timestamp / 60000)
+            : 'none';
+
+        return [
+          row?.type || '',
+          row?.currency || '-',
+          roundedAmount,
+          row?.reference || '-',
+          timestampBucket,
+        ].join('|');
+      };
+
+      const reconcileTransferRowsWithOutgoingMovements = ({
+        transferRows,
+        movementRows,
+      }) => {
+        const reconciledRows = [...(Array.isArray(transferRows) ? transferRows : [])];
+        const outgoingMovements = (Array.isArray(movementRows) ? movementRows : []).filter(
+          movementRow =>
+            movementRow.type === 'Outgoing' && movementRow.reconciliationEligible
+        );
+
+        const existingFingerprints = new Set(
+          reconciledRows.map(row => buildRowFingerprint(row))
+        );
+
+        let reclassifiedCount = 0;
+        let appendedCount = 0;
+
+        outgoingMovements.forEach(movementRow => {
+          const transferReceiptId = String(movementRow.transferReceiptId || '').trim();
+
+          if (transferReceiptId) {
+            const existingReceiptIndex = reconciledRows.findIndex(row => {
+              return String(row?.receiptId || '').trim() === transferReceiptId;
+            });
+
+            if (existingReceiptIndex >= 0) {
+              const existingRow = reconciledRows[existingReceiptIndex];
+              if (existingRow.type !== 'Outgoing') {
+                reconciledRows[existingReceiptIndex] = {
+                  ...existingRow,
+                  type: 'Outgoing',
+                  source:
+                    'transfer_receipts_reclassified_by_balance_movements',
+                };
+                reclassifiedCount += 1;
+              }
+
+              return;
+            }
+          }
+
+          const movementFingerprint = buildRowFingerprint(movementRow);
+          if (existingFingerprints.has(movementFingerprint)) {
+            return;
+          }
+
+          reconciledRows.push({
+            ...movementRow,
+            source: 'balance_movements_outgoing_reconciliation',
+          });
+          existingFingerprints.add(movementFingerprint);
+          appendedCount += 1;
+        });
+
+        const source = reclassifiedCount || appendedCount
+          ? 'transfer_receipts+balance_movements_reconciliation'
+          : 'transfer_receipts';
+
+        return {
+          rows: reconciledRows,
+          source,
+          reconciliation: {
+            reclassifiedCount,
+            appendedCount,
+          },
+        };
+      };
+
+      const fetchPlayerTransferReceipts = async ({ playerId, requestContext }) => {
+        const responsePayload = await fetchJSON({
+          url: `${requestContext.apiHost}/v1/player-transfer-receipts/by-player/${encodeURIComponent(
+            playerId
+          )}`,
+          headers: requestContext.headers,
+        });
+
+        return normalizeListPayload(responsePayload);
+      };
+
+      const fetchPlayerBalanceMovements = async ({ playerId, requestContext }) => {
+        const responsePayload = await fetchJSON({
+          url: `${requestContext.apiHost}/v1/player-balance-movements/by-player/${encodeURIComponent(
+            playerId
+          )}`,
+          headers: requestContext.headers,
+        });
+
+        return normalizeListPayload(responsePayload);
+      };
+
+      const loadRowsWithFallback = async ({ playerId, requestContext }) => {
+        let transferError = null;
+        let movementError = null;
+        let transferRows = [];
+        let movementRows = [];
+
+        try {
+          const receipts = await fetchPlayerTransferReceipts({
+            playerId,
+            requestContext,
+          });
+          transferRows = normalizeTransferReceiptRows(receipts);
+        } catch (error) {
+          if (isAuthError(error)) {
+            throw error;
+          }
+
+          transferError = error;
+        }
+
+        try {
+          const movements = await fetchPlayerBalanceMovements({
+            playerId,
+            requestContext,
+          });
+          movementRows = normalizeBalanceMovementRows(movements);
+        } catch (error) {
+          if (isAuthError(error)) {
+            throw error;
+          }
+
+          movementError = error;
+        }
+
+        if (!transferError) {
+          const reconciledPayload = reconcileTransferRowsWithOutgoingMovements({
+            transferRows,
+            movementRows,
+          });
+
+          return {
+            rows: reconciledPayload.rows,
+            source: reconciledPayload.source,
+            reconciliation: reconciledPayload.reconciliation,
+          };
+        }
+
+        if (!movementError) {
+          return {
+            rows: movementRows,
+            source: 'balance_movements',
+          };
+        }
+
+        const composedError = new Error(
+          'No se pudieron cargar transfer receipts ni balance movements.'
+        );
+        composedError.primaryError = transferError;
+        composedError.secondaryError = movementError;
+        throw composedError;
+      };
+
+      const setStatus = ({ title, tone = 'info' }) => {
+        statusTitleEl.textContent = title;
+        statusBoxEl.classList.remove('warning', 'error');
+
+        if (tone === 'warning') {
+          statusBoxEl.classList.add('warning');
+        }
+
+        if (tone === 'error') {
+          statusBoxEl.classList.add('error');
+        }
+      };
+
+      const formatCurrencyBreakdown = totalsByCurrency => {
+        const entries = Object.entries(totalsByCurrency || {});
+        if (!entries.length) {
+          return '-';
+        }
+
+        return entries
+          .sort((left, right) => right[1] - left[1])
+          .map(([currency, amount]) => `${currency} ${formatNumber(amount)}`)
+          .join(' | ');
+      };
+
+      const renderRows = rows => {
+        const sortedRows = [...(Array.isArray(rows) ? rows : [])].sort(
+          (left, right) => {
+            const leftTimestamp =
+              typeof left.timestamp === 'number' ? left.timestamp : -Infinity;
+            const rightTimestamp =
+              typeof right.timestamp === 'number' ? right.timestamp : -Infinity;
+
+            return rightTimestamp - leftTimestamp;
+          }
+        );
+
+        if (!sortedRows.length) {
+          rowsEl.innerHTML =
+            '<tr><td colspan="6" class="empty">No hay movimientos para este jugador.</td></tr>';
+          return sortedRows;
+        }
+
+        rowsEl.innerHTML = sortedRows
+          .map(row => {
+            const isOutgoing = row.type === 'Outgoing';
+            const amountClass = isOutgoing ? 'bad' : 'good';
+            const safeDate = escapeHTML(row.dateLabel);
+            const safeType = escapeHTML(row.type);
+            const safeStatus = escapeHTML(row.status);
+            const safeCurrency = escapeHTML(row.currency);
+            const safeReference = escapeHTML(row.reference);
+
+            return (
+              '<tr>' +
+              `<td>${safeDate}</td>` +
+              `<td>${safeType}</td>` +
+              `<td><span class="status-pill">${safeStatus}</span></td>` +
+              `<td class="amount ${amountClass}">${formatNumber(row.amount)}</td>` +
+              `<td>${safeCurrency}</td>` +
+              `<td>${safeReference}</td>` +
+              '</tr>'
+            );
+          })
+          .join('');
+
+        return sortedRows;
+      };
+
+      const renderSummary = ({ rows, source, playerId }) => {
+        const totals = {
+          loads: 0,
+          withdrawals: 0,
+          loadsCount: 0,
+          withdrawalsCount: 0,
+          loadsByCurrency: {},
+          withdrawalsByCurrency: {},
+        };
+
+        (Array.isArray(rows) ? rows : []).forEach(row => {
+          if (row.type === 'Incoming') {
+            totals.loads += row.amount;
+            totals.loadsCount += 1;
+            totals.loadsByCurrency[row.currency] =
+              (totals.loadsByCurrency[row.currency] || 0) + row.amount;
+            return;
+          }
+
+          totals.withdrawals += row.amount;
+          totals.withdrawalsCount += 1;
+          totals.withdrawalsByCurrency[row.currency] =
+            (totals.withdrawalsByCurrency[row.currency] || 0) + row.amount;
+        });
+
+        loadsTotalEl.textContent = formatNumber(totals.loads);
+        withdrawalsTotalEl.textContent = formatNumber(totals.withdrawals);
+        netTotalEl.textContent = formatNumber(totals.loads - totals.withdrawals);
+        loadsCountEl.textContent = `${totals.loadsCount} movimientos`;
+        withdrawalsCountEl.textContent = `${totals.withdrawalsCount} movimientos`;
+        sourceEl.textContent = `Fuente: ${source}`;
+        playerIdEl.textContent = playerId || '-';
+        lastUpdatedEl.textContent = `Ultima actualizacion: ${formatDate(Date.now())}`;
+        currencyDetailsEl.textContent =
+          `Cargas: ${formatCurrencyBreakdown(totals.loadsByCurrency)} | ` +
+          `Retiros: ${formatCurrencyBreakdown(totals.withdrawalsByCurrency)}`;
+        rowsCountEl.textContent = `Filas: ${(Array.isArray(rows) ? rows : []).length}`;
+      };
+
+      const updateMetaFromContext = context => {
+        const conversationId = context?.conversation?.id || '-';
+        const contact = context?.contact || context?.conversation?.meta?.sender || {};
+        const contactId = contact?.id || urlParams.get('contactId') || '-';
+        const identifier = contact?.identifier || urlParams.get('identifier') || '-';
+
+        metaEl.textContent =
+          `Conversation #${conversationId} | Contact ${contactId} | Identifier ${identifier}`;
+      };
+
+      const executePlayerFinancialLoad = async () => {
+        await ensureSessionReady();
+
+        let requestContext = null;
+        try {
+          requestContext = resolveRequestContext();
+        } catch (error) {
+          const shouldRetryMissingContext =
+            error?.code === 'MISSING_BACKOFFICE_CONTEXT' && Boolean(sessionHelper);
+
+          if (!shouldRetryMissingContext) {
+            throw error;
+          }
+
+          const refreshResult = await ensureSessionReady({
+            forceRefresh: true,
+          });
+          if (
+            refreshResult?.state !== 'refreshed' &&
+            refreshResult?.state !== 'not_needed'
+          ) {
+            throw error;
+          }
+
+          requestContext = resolveRequestContext();
+        }
+
+        const playerId = await resolvePlayerId({
+          context: state.context,
+          requestContext,
+        });
+
+        if (!playerId) {
+          const error = new Error(
+            'No se pudo resolver playerId con el contexto de contacto.'
+          );
+          error.code = 'PLAYER_ID_NOT_FOUND';
+          throw error;
+        }
+
+        const payload = await loadRowsWithFallback({
+          playerId,
+          requestContext,
+        });
+
+        return {
+          playerId,
+          payload,
+        };
+      };
+
+      const loadPlayerFinancialData = async () => {
+        if (state.loading) {
+          return;
+        }
+
+        if (!state.context) {
+          setStatus({ title: 'Esperando appContext del chat...', tone: 'warning' });
+          return;
+        }
+
+        state.loading = true;
+        refreshButtonEl.disabled = true;
+        setStatus({ title: 'Cargando movimientos del jugador...' });
+
+        let finalError = null;
+
+        try {
+          let playerId = '';
+          let payload = null;
+
+          try {
+            const loadResult = await executePlayerFinancialLoad();
+            playerId = loadResult.playerId;
+            payload = loadResult.payload;
+          } catch (error) {
+            if (!isAuthError(error) || !sessionHelper) {
+              throw error;
+            }
+
+            setStatus({
+              title: 'Sesion expirada. Renovando credenciales y reintentando...',
+              tone: 'warning',
+            });
+
+            const refreshResult = await ensureSessionReady({
+              forceRefresh: true,
+            });
+            if (
+              refreshResult?.state !== 'refreshed' &&
+              refreshResult?.state !== 'not_needed'
+            ) {
+              throw error;
+            }
+
+            const retryResult = await executePlayerFinancialLoad();
+            playerId = retryResult.playerId;
+            payload = retryResult.payload;
+          }
+
+          state.playerId = playerId;
+          state.rows = payload.rows;
+          state.source = payload.source;
+
+          const renderedRows = renderRows(payload.rows);
+          renderSummary({
+            rows: renderedRows,
+            source: payload.source,
+            playerId,
+          });
+
+          if (payload.source === 'balance_movements') {
+            setStatus({
+              title:
+                'Transfer receipts no disponibles. Mostrando fallback por balance movements.',
+              tone: 'warning',
+            });
+          } else if (
+            payload.reconciliation?.reclassifiedCount ||
+            payload.reconciliation?.appendedCount
+          ) {
+            setStatus({
+              title:
+                'Se detectaron retiros no tipados como outgoing y fueron reconciliados con balance movements.',
+              tone: 'warning',
+            });
+          } else {
+            setStatus({ title: 'Datos cargados correctamente.' });
+          }
+        } catch (error) {
+          finalError = error;
+        } finally {
+          if (finalError) {
+            const errorMessage =
+              finalError?.code === 'MISSING_BACKOFFICE_CONTEXT'
+                ? 'Sesion de Backoffice incompleta. Reautentica en Backoffice y recarga la conversacion.'
+                : isAuthError(finalError)
+                  ? 'Sesion expirada o sin permisos en Backoffice.'
+                  : finalError?.message ||
+                    'No se pudo cargar la informacion del jugador.';
+
+            renderRows([]);
+            renderSummary({ rows: [], source: 'none', playerId: '-' });
+            setStatus({ title: errorMessage, tone: 'error' });
+          }
+
+          state.loading = false;
+          refreshButtonEl.disabled = false;
+        }
+      };
+
+      const requestContext = () => {
+        if (window.parent) {
+          window.parent.postMessage('chatwoot-dashboard-app:fetch-info', '*');
+        }
+      };
+
+      const keepBackofficeSessionFresh = async () => {
+        try {
+          await ensureSessionReady();
+        } catch {
+          // Session refresh failures are handled on demand during data load.
+        }
+      };
+
+      refreshButtonEl.addEventListener('click', () => {
+        loadPlayerFinancialData();
+      });
+
+      window.addEventListener('message', event => {
+        let payload = event.data;
+
+        if (typeof payload === 'string') {
+          try {
+            payload = JSON.parse(payload);
+          } catch {
+            return;
+          }
+        }
+
+        if (!payload || payload.event !== 'appContext') {
+          return;
+        }
+
+        state.context = payload.data || {};
+        updateMetaFromContext(state.context);
+        loadPlayerFinancialData();
+      });
+
+      renderRows([]);
+      renderSummary({ rows: [], source: 'none', playerId: '-' });
+      setStatus({ title: 'Solicitando contexto del chat...' });
+      keepBackofficeSessionFresh();
+      setInterval(keepBackofficeSessionFresh, 60 * 1000);
+      requestContext();
+      setTimeout(requestContext, 350);
+    </script>
+  </body>
+</html>
