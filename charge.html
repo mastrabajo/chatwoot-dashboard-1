@@ -260,7 +260,6 @@
       </section>
     </main>
 
-    <script src="/conversation-modules/shared/session-utils.js"></script>
     <script>
       const BACKOFFICE_SESSION_STORAGE_KEY = 'cw_frontend_backoffice_session';
       const DEFAULT_BACKOFFICE_API_HOST = 'https://api-bko.jugaygana.site';
@@ -362,12 +361,24 @@
       const rowsCountEl = document.getElementById('rowsCount');
 
       const urlParams = new URLSearchParams(window.location.search);
+      const isDebugEnabled =
+        urlParams.get('debug') === '1' || urlParams.get('debug') === 'true';
+      const debugLog = (...args) => {
+        if (!isDebugEnabled) {
+          return;
+        }
+
+        console.log(...args);
+      };
+
       const state = {
         context: null,
         playerId: '',
         rows: [],
         source: 'none',
         loading: false,
+        lastContextFingerprint: '',
+        lastContextReceivedAt: 0,
       };
 
       const formatNumber = value =>
@@ -2104,12 +2115,12 @@
       };
 
       window.addEventListener('message', function (event) {
-        console.log('[Dashboard App] Mensaje recibido:', event);
+        debugLog('[Dashboard App] Mensaje recibido:', event);
 
         let eventData = null;
         if (typeof event.data === 'string') {
           if (!isJSONValid(event.data)) {
-            console.log('[Dashboard App] Mensaje ignorado (no JSON valido):', event);
+            debugLog('[Dashboard App] Mensaje ignorado (no JSON valido):', event);
             return;
           }
 
@@ -2129,13 +2140,32 @@
           eventData = eventData.data;
         }
 
-        console.log('[Dashboard App] eventData parseado:', eventData);
+        debugLog('[Dashboard App] eventData parseado:', eventData);
 
         if (!eventData || eventData.event !== 'appContext') {
           return;
         }
 
-        state.context = eventData.data || {};
+        const nextContext = eventData.data || {};
+        let contextFingerprint = '';
+        try {
+          contextFingerprint = JSON.stringify(nextContext);
+        } catch {
+          contextFingerprint = '';
+        }
+
+        const now = Date.now();
+        if (
+          contextFingerprint &&
+          contextFingerprint === state.lastContextFingerprint &&
+          now - state.lastContextReceivedAt < 5000
+        ) {
+          return;
+        }
+
+        state.lastContextFingerprint = contextFingerprint;
+        state.lastContextReceivedAt = now;
+        state.context = nextContext;
         updateMetaFromContext(state.context);
         loadPlayerFinancialData();
       });
