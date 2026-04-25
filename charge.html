@@ -264,6 +264,7 @@
       const BACKOFFICE_SESSION_STORAGE_KEY = 'cw_frontend_backoffice_session';
       const DEFAULT_BACKOFFICE_API_HOST = 'https://api-bko.jugaygana.site';
       const BACKOFFICE_DOMAIN_TOKEN = 'Y3bqh7E5Qqlb57c';
+      const DEFAULT_GLOBAL_CONTACT_ID = '805485377';
       const sessionHelper = window.CWConversationModuleSession || null;
       const UUID_PATTERN =
         /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -361,6 +362,11 @@
       const rowsCountEl = document.getElementById('rowsCount');
 
       const urlParams = new URLSearchParams(window.location.search);
+      const GLOBAL_CONTACT_ID = String(
+        urlParams.get('globalcontactId') ||
+          urlParams.get('globalContactId') ||
+          DEFAULT_GLOBAL_CONTACT_ID
+      ).trim();
       const isDebugEnabled =
         urlParams.get('debug') === '1' || urlParams.get('debug') === 'true';
       const debugLog = (...args) => {
@@ -414,6 +420,8 @@
         String(value || '')
           .trim()
           .toLowerCase();
+
+      const normalizeContactId = value => String(value ?? '').trim();
 
       const uniq = values => {
         const seen = new Set();
@@ -1340,6 +1348,32 @@
         };
       };
 
+      const resolveContextContactId = context => {
+        const contact = context?.contact || {};
+        const sender = context?.conversation?.meta?.sender || {};
+        const conversation = context?.conversation || {};
+
+        return (
+          uniq([
+            contact?.id,
+            sender?.id,
+            conversation?.contactId,
+            conversation?.contact_id,
+          ])
+            .map(candidate => normalizeContactId(candidate))
+            .find(Boolean) || ''
+        );
+      };
+
+      const isGlobalContactContext = context => {
+        const contextContactId = resolveContextContactId(context);
+        if (!GLOBAL_CONTACT_ID || !contextContactId) {
+          return false;
+        }
+
+        return contextContactId === GLOBAL_CONTACT_ID;
+      };
+
       const extractValueByKeys = (source, keys) => {
         if (!source || typeof source !== 'object') {
           return '';
@@ -1861,29 +1895,65 @@
         };
       };
 
-      const fetchPlayerTransferReceipts = async ({ playerId, requestContext }) => {
+      const fetchPlayerTransferReceipts = async ({
+        playerId,
+        requestContext,
+        unfiltered = false,
+      }) => {
+        const normalizedPlayerId = String(playerId || '').trim();
+        const shouldFilterByPlayer =
+          !unfiltered && UUID_PATTERN.test(normalizedPlayerId);
+
         const responsePayload = await fetchJSON({
-          url: `${requestContext.apiHost}/v1/player-transfer-receipts/by-player/${encodeURIComponent(
-            playerId
-          )}`,
+          url: shouldFilterByPlayer
+            ? `${requestContext.apiHost}/v1/player-transfer-receipts/by-player/${encodeURIComponent(
+                normalizedPlayerId
+              )}`
+            : `${requestContext.apiHost}/v1/player-transfer-receipts`,
           headers: requestContext.headers,
+          params: shouldFilterByPlayer
+            ? {}
+            : {
+                tenantId: requestContext.tenantId,
+                accountId: requestContext.accountId,
+              },
         });
 
         return normalizeListPayload(responsePayload);
       };
 
-      const fetchPlayerBalanceMovements = async ({ playerId, requestContext }) => {
+      const fetchPlayerBalanceMovements = async ({
+        playerId,
+        requestContext,
+        unfiltered = false,
+      }) => {
+        const normalizedPlayerId = String(playerId || '').trim();
+        const shouldFilterByPlayer =
+          !unfiltered && UUID_PATTERN.test(normalizedPlayerId);
+
         const responsePayload = await fetchJSON({
-          url: `${requestContext.apiHost}/v1/player-balance-movements/by-player/${encodeURIComponent(
-            playerId
-          )}`,
+          url: shouldFilterByPlayer
+            ? `${requestContext.apiHost}/v1/player-balance-movements/by-player/${encodeURIComponent(
+                normalizedPlayerId
+              )}`
+            : `${requestContext.apiHost}/v1/player-balance-movements`,
           headers: requestContext.headers,
+          params: shouldFilterByPlayer
+            ? {}
+            : {
+                tenantId: requestContext.tenantId,
+                accountId: requestContext.accountId,
+              },
         });
 
         return normalizeListPayload(responsePayload);
       };
 
-      const loadRowsWithFallback = async ({ playerId, requestContext }) => {
+      const loadRowsWithFallback = async ({
+        playerId,
+        requestContext,
+        isGlobalContact = false,
+      }) => {
         let transferError = null;
         let movementError = null;
         let transferRows = [];
@@ -1893,6 +1963,7 @@
           const receipts = await fetchPlayerTransferReceipts({
             playerId,
             requestContext,
+            unfiltered: isGlobalContact,
           });
           transferRows = normalizeTransferReceiptRows(receipts);
         } catch (error) {
@@ -1907,6 +1978,7 @@
           const movements = await fetchPlayerBalanceMovements({
             playerId,
             requestContext,
+            unfiltered: isGlobalContact,
           });
           movementRows = normalizeBalanceMovementRows(movements);
         } catch (error) {
@@ -1986,7 +2058,7 @@
 
         if (!sortedRows.length) {
           rowsEl.innerHTML =
-            '<tr><td colspan="6" class="empty">No hay movimientos para este jugador.</td></tr>';
+            '<tr><td colspan="6" class="empty">No hay movimientos disponibles.</td></tr>';
           return sortedRows;
         }
 
@@ -2094,22 +2166,30 @@
           requestContext = await enrichRequestContextFromAccount(requestContext);
         }
 
-        const playerId = await resolvePlayerId({
-          context: state.context,
-          requestContext,
-        });
+        const globalContactMode = isGlobalContactContext(state.context);
+        let playerId = '';
 
-        if (!playerId) {
-          const error = new Error(
-            'No se pudo resolver playerId con el contexto de contacto.'
-          );
-          error.code = 'PLAYER_ID_NOT_FOUND';
-          throw error;
+        if (globalContactMode) {
+          playerId = GLOBAL_CONTACT_ID ? `GLOBAL:${GLOBAL_CONTACT_ID}` : 'GLOBAL';
+        } else {
+          playerId = await resolvePlayerId({
+            context: state.context,
+            requestContext,
+          });
+
+          if (!playerId) {
+            const error = new Error(
+              'No se pudo resolver playerId con el contexto de contacto.'
+            );
+            error.code = 'PLAYER_ID_NOT_FOUND';
+            throw error;
+          }
         }
 
         const payload = await loadRowsWithFallback({
           playerId,
           requestContext,
+          isGlobalContact: globalContactMode,
         });
 
         return {
@@ -2128,9 +2208,14 @@
           return;
         }
 
+        const globalContactMode = isGlobalContactContext(state.context);
         state.loading = true;
         refreshButtonEl.disabled = true;
-        setStatus({ title: 'Cargando movimientos del jugador...' });
+        setStatus({
+          title: globalContactMode
+            ? 'Cargando movimientos globales del tenant...'
+            : 'Cargando movimientos del jugador...',
+        });
 
         let finalError = null;
 
