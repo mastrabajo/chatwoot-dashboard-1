@@ -1185,6 +1185,12 @@
             accountChatwoot?.accessToken || accountChatwoot?.access_token || ''
           ).trim();
 
+          debugLog('[Dashboard App] Bootstrap by-account', {
+            accountId: requestContext.accountId,
+            tenantId: nextTenantId || '',
+            hasAccessToken: Boolean(nextAccessToken),
+          });
+
           const nextHeaders = {
             ...(requestContext.headers || {}),
           };
@@ -1266,13 +1272,19 @@
       };
 
       const fetchJSON = async ({ url, headers, params = {} }) => {
-        const requestHeaders = {
-          ...(headers || {}),
-          'x-domain-token': BACKOFFICE_DOMAIN_TOKEN,
-          'X-Domain-Token': BACKOFFICE_DOMAIN_TOKEN,
-        };
+        const requestHeaders = new Headers(headers || {});
+        requestHeaders.set('x-domain-token', BACKOFFICE_DOMAIN_TOKEN);
 
-        const response = await fetch(buildURL({ base: url, params }), {
+        const requestUrl = buildURL({ base: url, params });
+        debugLog('[Dashboard App] Request saliente', {
+          url: requestUrl,
+          hasDomainToken: requestHeaders.has('x-domain-token'),
+          hasAuthorization: requestHeaders.has('authorization'),
+          tenantId: requestHeaders.get('x-tenant-id') || '',
+          accountId: requestHeaders.get('x-account-id') || '',
+        });
+
+        const response = await fetch(requestUrl, {
           method: 'GET',
           headers: requestHeaders,
           credentials: 'include',
