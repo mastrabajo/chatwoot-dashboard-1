@@ -534,18 +534,10 @@
       const isLikelyConfirmedStatus = statusValue => {
         const normalizedStatus = normalizeText(statusValue);
         if (!normalizedStatus) {
-          return true;
-        }
-
-        if (hasKeywordMatch(normalizedStatus, PAYMENT_STATUS_NEGATIVE_KEYWORDS)) {
           return false;
         }
 
-        if (hasKeywordMatch(normalizedStatus, PAYMENT_STATUS_POSITIVE_KEYWORDS)) {
-          return true;
-        }
-
-        return true;
+        return /(^|[^a-z])approved([^a-z]|$)/.test(normalizedStatus);
       };
 
       const resolveTransferReceiptTypeValue = receipt =>
@@ -1348,30 +1340,37 @@
         };
       };
 
-      const resolveContextContactId = context => {
+      const resolveContextContactCandidates = context => {
         const contact = context?.contact || {};
         const sender = context?.conversation?.meta?.sender || {};
         const conversation = context?.conversation || {};
 
-        return (
-          uniq([
-            contact?.id,
-            sender?.id,
-            conversation?.contactId,
-            conversation?.contact_id,
-          ])
-            .map(candidate => normalizeContactId(candidate))
-            .find(Boolean) || ''
-        );
+        return uniq([
+          contact?.id,
+          sender?.id,
+          conversation?.contactId,
+          conversation?.contact_id,
+          contact?.identifier,
+          sender?.identifier,
+          conversation?.identifier,
+          conversation?.meta?.sender?.identifier,
+        ])
+          .map(candidate => normalizeContactId(candidate))
+          .filter(Boolean);
       };
 
       const isGlobalContactContext = context => {
-        const contextContactId = resolveContextContactId(context);
-        if (!GLOBAL_CONTACT_ID || !contextContactId) {
+        const globalContactId = normalizeContactId(GLOBAL_CONTACT_ID);
+        if (!globalContactId) {
           return false;
         }
 
-        return contextContactId === GLOBAL_CONTACT_ID;
+        const candidateIds = resolveContextContactCandidates(context);
+        if (!candidateIds.length) {
+          return false;
+        }
+
+        return candidateIds.some(candidateId => candidateId === globalContactId);
       };
 
       const extractValueByKeys = (source, keys) => {
@@ -1827,6 +1826,42 @@
         ].join('|');
       };
 
+      const buildRowUniqueKey = row => {
+        const receiptId = String(row?.receiptId || '').trim();
+        if (receiptId) {
+          return `receipt:${receiptId}`;
+        }
+
+        const movementId = String(row?.movementId || '').trim();
+        if (movementId) {
+          return `movement:${movementId}`;
+        }
+
+        const transferReceiptId = String(row?.transferReceiptId || '').trim();
+        if (transferReceiptId) {
+          const roundedAmount = Number.isFinite(row?.amount)
+            ? Number(row.amount).toFixed(2)
+            : '0.00';
+          return `transfer:${transferReceiptId}:${row?.type || ''}:${roundedAmount}`;
+        }
+
+        return `fingerprint:${buildRowFingerprint(row)}`;
+      };
+
+      const dedupeRows = rows => {
+        const seen = new Set();
+
+        return (Array.isArray(rows) ? rows : []).filter(row => {
+          const key = buildRowUniqueKey(row);
+          if (seen.has(key)) {
+            return false;
+          }
+
+          seen.add(key);
+          return true;
+        });
+      };
+
       const reconcileTransferRowsWithOutgoingMovements = ({
         transferRows,
         movementRows,
@@ -2045,7 +2080,7 @@
       };
 
       const renderRows = rows => {
-        const sortedRows = [...(Array.isArray(rows) ? rows : [])].sort(
+        const sortedRows = [...dedupeRows(rows)].sort(
           (left, right) => {
             const leftTimestamp =
               typeof left.timestamp === 'number' ? left.timestamp : -Infinity;
