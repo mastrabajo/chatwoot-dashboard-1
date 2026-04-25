@@ -1000,9 +1000,13 @@
         const parentConfig = resolveParentConfig();
         const session = parseBackofficeSession();
         const contextCredentials = resolveBackofficeCredentialsFromContext(context);
+        const contextAccountId = resolveAccountIdFromContext(context);
         const requestedAccountId =
           parseAccountId(urlParams.get('accountId')) ||
-          parseAccountId(parentConfig?.accountId);
+          parseAccountId(urlParams.get('account_id')) ||
+          parseAccountId(parentConfig?.accountId) ||
+          parseAccountId(parentConfig?.account_id) ||
+          contextAccountId;
         const activeTenant = resolveActiveTenant({
           session,
           parentConfig,
@@ -1059,8 +1063,13 @@
           Boolean(contextCredentials.appUser) &&
           Boolean(contextCredentials.appPassword) &&
           Boolean(contextCredentials.platform);
+        const canBootstrapWithAccount = Boolean(accountId);
 
-        if (!hasLegacySessionContext && !hasContactCredentialContext) {
+        if (
+          !hasLegacySessionContext &&
+          !hasContactCredentialContext &&
+          !canBootstrapWithAccount
+        ) {
           const missingContextFields = [];
           if (!tenantId && !contextCredentials.platform) {
             missingContextFields.push('tenantId');
@@ -1129,7 +1138,79 @@
           tenantId,
           accountId,
           apiHost,
+          bootstrapWithAccount: !hasLegacySessionContext && Boolean(accountId),
         };
+      };
+
+      const fetchChatwootByAccountId = async ({ requestContext }) => {
+        if (!requestContext?.accountId) {
+          return null;
+        }
+
+        const lookupHeaders = {
+          Accept: 'application/json',
+          'x-account-id': String(requestContext.accountId),
+        };
+
+        const responsePayload = await fetchJSON({
+          url: `${requestContext.apiHost}/v1/chatwoots/by-account/${encodeURIComponent(
+            requestContext.accountId
+          )}`,
+          headers: lookupHeaders,
+        });
+
+        return unwrapObjectData(responsePayload);
+      };
+
+      const enrichRequestContextFromAccount = async requestContext => {
+        if (!requestContext?.accountId) {
+          return requestContext;
+        }
+
+        try {
+          const accountChatwoot = await fetchChatwootByAccountId({
+            requestContext,
+          });
+
+          if (!accountChatwoot || typeof accountChatwoot !== 'object') {
+            return requestContext;
+          }
+
+          const nextTenantId = parseTenantId(
+            accountChatwoot?.tenantId ||
+              accountChatwoot?.tenant_id ||
+              requestContext.tenantId
+          );
+          const nextAccessToken = String(
+            accountChatwoot?.accessToken || accountChatwoot?.access_token || ''
+          ).trim();
+
+          const nextHeaders = {
+            ...(requestContext.headers || {}),
+          };
+
+          if (nextTenantId) {
+            nextHeaders['x-tenant-id'] = nextTenantId;
+            nextHeaders['x-tenant'] = nextTenantId;
+          }
+
+          if (nextAccessToken) {
+            nextHeaders.Authorization = `Bearer ${nextAccessToken}`;
+            setTokenHeaders({ headers: nextHeaders, token: nextAccessToken });
+          }
+
+          return {
+            ...requestContext,
+            tenantId: nextTenantId || requestContext.tenantId,
+            headers: nextHeaders,
+          };
+        } catch (error) {
+          debugLog(
+            '[Dashboard App] No se pudo resolver tenant/token por accountId:',
+            error
+          );
+          return requestContext;
+        }
       };
 
       const normalizeListPayload = payload => {
@@ -1426,6 +1507,44 @@
             'api_host',
           ]),
         };
+      };
+
+      const resolveAccountIdFromContext = context => {
+        const { contact, sender, customAttributes, additionalAttributes } =
+          resolveContactAttributes(context);
+
+        const accountCandidates = uniq([
+          context?.accountId,
+          context?.account_id,
+          context?.conversation?.accountId,
+          context?.conversation?.account_id,
+          context?.conversation?.meta?.accountId,
+          context?.conversation?.meta?.account_id,
+          contact?.accountId,
+          contact?.account_id,
+          sender?.accountId,
+          sender?.account_id,
+          extractValueByKeys(customAttributes, [
+            'accountId',
+            'account_id',
+            'chatwootAccountId',
+            'chatwoot_account_id',
+          ]),
+          extractValueByKeys(additionalAttributes, [
+            'accountId',
+            'account_id',
+            'chatwootAccountId',
+            'chatwoot_account_id',
+          ]),
+          urlParams.get('accountId'),
+          urlParams.get('account_id'),
+        ]);
+
+        return (
+          accountCandidates
+            .map(candidate => parseAccountId(candidate))
+            .find(Boolean) || null
+        );
       };
 
       const fetchPlayerByPlatformId = async ({
@@ -1806,8 +1925,10 @@
           };
         }
 
+        const transferStatus = transferError?.status || 'n/a';
+        const movementStatus = movementError?.status || 'n/a';
         const composedError = new Error(
-          'No se pudieron cargar transfer receipts ni balance movements.'
+          `No se pudieron cargar transfer receipts ni balance movements. (transfer receipts: ${transferStatus}, balance movements: ${movementStatus})`
         );
         composedError.primaryError = transferError;
         composedError.secondaryError = movementError;
@@ -1938,6 +2059,7 @@
         let requestContext = null;
         try {
           requestContext = resolveRequestContext(state.context);
+          requestContext = await enrichRequestContextFromAccount(requestContext);
         } catch (error) {
           const shouldRetryMissingContext =
             error?.code === 'MISSING_BACKOFFICE_CONTEXT' && Boolean(sessionHelper);
@@ -1957,6 +2079,7 @@
           }
 
           requestContext = resolveRequestContext(state.context);
+          requestContext = await enrichRequestContextFromAccount(requestContext);
         }
 
         const playerId = await resolvePlayerId({
