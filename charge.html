@@ -153,8 +153,14 @@
         color: var(--muted);
       }
 
+      .table-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
       table {
         width: 100%;
+        min-width: 680px;
         border-collapse: collapse;
       }
 
@@ -191,11 +197,119 @@
         font-style: italic;
       }
 
+      .pagination {
+        padding: 10px 16px 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .pagination-summary {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .pagination-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .pagination-controls button,
+      .pagination-controls select {
+        border: 1px solid #c9d9cc;
+        background: #ffffff;
+        color: var(--text);
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-size: 12px;
+      }
+
+      .pagination-controls button {
+        cursor: pointer;
+      }
+
+      .pagination-controls button:hover:not(:disabled) {
+        border-color: #9ab8a0;
+      }
+
+      .pagination-controls button:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+
+      .page-size-label,
+      .page-info {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
       .hint {
         margin: 0;
         padding: 10px 16px 14px;
         font-size: 12px;
         color: var(--muted);
+      }
+
+      @media (max-width: 720px) {
+        .wrapper {
+          margin: 8px auto;
+          padding: 0 8px;
+        }
+
+        .header,
+        .summary,
+        .details {
+          padding-left: 12px;
+          padding-right: 12px;
+        }
+
+        .status {
+          margin-left: 12px;
+          margin-right: 12px;
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .status button {
+          width: 100%;
+        }
+
+        th,
+        td {
+          padding: 8px 9px;
+          font-size: 12px;
+        }
+
+        .pagination {
+          padding-left: 12px;
+          padding-right: 12px;
+        }
+
+        .pagination-controls {
+          width: 100%;
+        }
+
+        .page-size-label {
+          flex: 1 1 100%;
+        }
+
+        #pageSizeSelect {
+          flex: 1 1 100%;
+        }
+
+        #prevPageButton,
+        #nextPageButton {
+          flex: 1 1 calc(50% - 6px);
+        }
+
+        #pageInfo {
+          width: 100%;
+          text-align: center;
+        }
       }
     </style>
   </head>
@@ -240,19 +354,40 @@
           <span id="rowsCount">Filas: 0</span>
         </div>
 
-        <table>
-          <thead>
-            <tr>
-              <th>Fecha</th>
-              <th>Tipo</th>
-              <th>Estado</th>
-              <th>Monto</th>
-              <th>Moneda</th>
-              <th>Referencia</th>
-            </tr>
-          </thead>
-          <tbody id="rows"></tbody>
-        </table>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Tipo</th>
+                <th>Estado</th>
+                <th>Monto</th>
+                <th>Moneda</th>
+                <th>Referencia</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+
+        <div class="pagination" id="pagination" hidden>
+          <span class="pagination-summary" id="paginationSummary"
+            >Mostrando 0-0 de 0</span
+          >
+          <div class="pagination-controls">
+            <label class="page-size-label" for="pageSizeSelect"
+              >Filas por pagina</label
+            >
+            <select id="pageSizeSelect" aria-label="Filas por pagina">
+              <option value="10" selected>10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+            </select>
+            <button type="button" id="prevPageButton">Anterior</button>
+            <span class="page-info" id="pageInfo">Pagina 1 de 1</span>
+            <button type="button" id="nextPageButton">Siguiente</button>
+          </div>
+        </div>
 
         <p class="hint">
           Datos desde Backoffice: transfer receipts por jugador. Si falla ese fetch, usa balance movements como fallback tecnico.
@@ -360,6 +495,12 @@
       const refreshButtonEl = document.getElementById('refreshButton');
       const currencyDetailsEl = document.getElementById('currencyDetails');
       const rowsCountEl = document.getElementById('rowsCount');
+      const paginationEl = document.getElementById('pagination');
+      const paginationSummaryEl = document.getElementById('paginationSummary');
+      const pageSizeSelectEl = document.getElementById('pageSizeSelect');
+      const prevPageButtonEl = document.getElementById('prevPageButton');
+      const nextPageButtonEl = document.getElementById('nextPageButton');
+      const pageInfoEl = document.getElementById('pageInfo');
 
       const urlParams = new URLSearchParams(window.location.search);
       const GLOBAL_CONTACT_ID = String(
@@ -385,6 +526,10 @@
         loading: false,
         lastContextFingerprint: '',
         lastContextReceivedAt: 0,
+        pagination: {
+          page: 1,
+          pageSize: 10,
+        },
       };
 
       const formatNumber = value =>
@@ -2067,6 +2212,40 @@
         }
       };
 
+      const updatePaginationUI = ({
+        totalRows,
+        totalPages,
+        startIndex,
+        endIndex,
+      }) => {
+        const safeTotalRows = Number.isFinite(totalRows) ? totalRows : 0;
+        const safeTotalPages = Math.max(
+          1,
+          Number.isFinite(totalPages) ? totalPages : 1
+        );
+
+        paginationEl.hidden = safeTotalRows === 0;
+
+        if (safeTotalRows === 0) {
+          paginationSummaryEl.textContent = 'Mostrando 0-0 de 0';
+          pageInfoEl.textContent = 'Pagina 1 de 1';
+          prevPageButtonEl.disabled = true;
+          nextPageButtonEl.disabled = true;
+          pageSizeSelectEl.value = String(state.pagination.pageSize);
+          return;
+        }
+
+        const safeStart = Math.max(0, Math.min(startIndex, safeTotalRows - 1));
+        const safeEnd = Math.max(safeStart + 1, Math.min(endIndex, safeTotalRows));
+
+        paginationSummaryEl.textContent =
+          `Mostrando ${safeStart + 1}-${safeEnd} de ${safeTotalRows}`;
+        pageInfoEl.textContent = `Pagina ${state.pagination.page} de ${safeTotalPages}`;
+        prevPageButtonEl.disabled = state.pagination.page <= 1;
+        nextPageButtonEl.disabled = state.pagination.page >= safeTotalPages;
+        pageSizeSelectEl.value = String(state.pagination.pageSize);
+      };
+
       const formatCurrencyBreakdown = totalsByCurrency => {
         const entries = Object.entries(totalsByCurrency || {});
         if (!entries.length) {
@@ -2091,13 +2270,36 @@
           }
         );
 
+        const totalRows = sortedRows.length;
+        const pageSize = Number(state.pagination.pageSize) || 10;
+        const totalPages = totalRows ? Math.ceil(totalRows / pageSize) : 1;
+
+        state.pagination.page = Math.min(
+          Math.max(1, state.pagination.page),
+          totalPages
+        );
+
+        const startIndex = totalRows
+          ? (state.pagination.page - 1) * pageSize
+          : 0;
+        const endIndex = Math.min(startIndex + pageSize, totalRows);
+
+        updatePaginationUI({
+          totalRows,
+          totalPages,
+          startIndex,
+          endIndex,
+        });
+
+        const visibleRows = sortedRows.slice(startIndex, endIndex);
+
         if (!sortedRows.length) {
           rowsEl.innerHTML =
             '<tr><td colspan="6" class="empty">No hay movimientos disponibles.</td></tr>';
           return sortedRows;
         }
 
-        rowsEl.innerHTML = sortedRows
+        rowsEl.innerHTML = visibleRows
           .map(row => {
             const isOutgoing = row.type === 'Outgoing';
             const amountClass = isOutgoing ? 'bad' : 'good';
@@ -2290,6 +2492,7 @@
           state.playerId = playerId;
           state.rows = payload.rows;
           state.source = payload.source;
+          state.pagination.page = 1;
 
           const renderedRows = renderRows(payload.rows);
           renderSummary({
@@ -2354,6 +2557,44 @@
 
       refreshButtonEl.addEventListener('click', () => {
         loadPlayerFinancialData();
+      });
+
+      prevPageButtonEl.addEventListener('click', () => {
+        if (state.loading || state.pagination.page <= 1) {
+          return;
+        }
+
+        state.pagination.page -= 1;
+        renderRows(state.rows);
+      });
+
+      nextPageButtonEl.addEventListener('click', () => {
+        if (state.loading) {
+          return;
+        }
+
+        const totalRows = Array.isArray(state.rows) ? dedupeRows(state.rows).length : 0;
+        const pageSize = Number(state.pagination.pageSize) || 10;
+        const totalPages = totalRows ? Math.ceil(totalRows / pageSize) : 1;
+
+        if (state.pagination.page >= totalPages) {
+          return;
+        }
+
+        state.pagination.page += 1;
+        renderRows(state.rows);
+      });
+
+      pageSizeSelectEl.addEventListener('change', () => {
+        const nextPageSize = Number(pageSizeSelectEl.value);
+        if (!Number.isFinite(nextPageSize) || nextPageSize <= 0) {
+          pageSizeSelectEl.value = String(state.pagination.pageSize);
+          return;
+        }
+
+        state.pagination.pageSize = nextPageSize;
+        state.pagination.page = 1;
+        renderRows(state.rows);
       });
 
       const isJSONValid = value => {
