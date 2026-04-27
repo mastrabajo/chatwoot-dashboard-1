@@ -1,0 +1,2465 @@
+<!doctype html>
+<html lang="es">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Visor de Comprobantes</title>
+		<style>
+			:root {
+				--bg: #f7faf7;
+				--surface: #ffffff;
+				--text: #122017;
+				--muted: #5f6c63;
+				--good: #138a4f;
+				--bad: #c03632;
+				--info: #1458d8;
+				--warning: #8f5b10;
+			}
+
+			* {
+				box-sizing: border-box;
+			}
+
+			body {
+				margin: 0;
+				font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+				background: linear-gradient(180deg, #edf8f0 0%, #f7faf7 100%);
+				color: var(--text);
+			}
+
+			.wrapper {
+				max-width: 1080px;
+				margin: 16px auto;
+				padding: 0 14px;
+			}
+
+			.panel {
+				background: var(--surface);
+				border: 1px solid #d8e8dd;
+				border-radius: 14px;
+				box-shadow: 0 12px 32px rgba(9, 30, 17, 0.08);
+				overflow: hidden;
+			}
+
+			.header {
+				padding: 16px;
+				border-bottom: 1px solid #e3efe7;
+			}
+
+			.title {
+				margin: 0;
+				font-size: 22px;
+			}
+
+			.meta {
+				margin-top: 8px;
+				color: var(--muted);
+				font-size: 13px;
+			}
+
+			.summary {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+				gap: 10px;
+				padding: 12px 16px;
+			}
+
+			.kpi {
+				border: 1px solid #e2ece5;
+				border-radius: 12px;
+				padding: 10px;
+				background: #fbfefc;
+			}
+
+			.kpi-label {
+				color: var(--muted);
+				font-size: 12px;
+			}
+
+			.kpi-value {
+				margin-top: 5px;
+				font-size: 20px;
+				font-weight: 700;
+			}
+
+			.kpi-value-small {
+				font-size: 14px;
+			}
+
+			.kpi-sub {
+				margin-top: 3px;
+				font-size: 12px;
+				color: var(--muted);
+			}
+
+			.good {
+				color: var(--good);
+			}
+
+			.bad {
+				color: var(--bad);
+			}
+
+			.status {
+				margin: 0 16px 12px;
+				border: 1px solid #dbe8de;
+				border-radius: 10px;
+				background: #f7fbf8;
+				padding: 9px 12px;
+				font-size: 12px;
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				gap: 10px;
+			}
+
+			.status strong {
+				color: var(--info);
+			}
+
+			.status.warning strong {
+				color: var(--warning);
+			}
+
+			.status.error {
+				border-color: #f2d0ce;
+				background: #fff5f5;
+			}
+
+			.status.error strong {
+				color: var(--bad);
+			}
+
+			.status button {
+				border: 1px solid #c9d9cc;
+				background: #ffffff;
+				color: var(--text);
+				border-radius: 8px;
+				padding: 6px 10px;
+				cursor: pointer;
+				font-size: 12px;
+			}
+
+			.status button:hover {
+				border-color: #9ab8a0;
+			}
+
+			.details {
+				padding: 0 16px 10px;
+				display: flex;
+				flex-wrap: wrap;
+				gap: 12px;
+				font-size: 12px;
+				color: var(--muted);
+			}
+
+			.table-container {
+				overflow-x: auto;
+				-webkit-overflow-scrolling: touch;
+			}
+
+			table {
+				width: 100%;
+				min-width: 760px;
+				border-collapse: collapse;
+			}
+
+			th,
+			td {
+				text-align: left;
+				padding: 10px 12px;
+				border-top: 1px solid #ebf3ee;
+				font-size: 13px;
+				vertical-align: top;
+			}
+
+			th {
+				font-size: 12px;
+				color: var(--muted);
+				background: #f7fbf8;
+			}
+
+			.amount {
+				font-weight: 700;
+			}
+
+			.status-pill {
+				display: inline-block;
+				padding: 2px 8px;
+				border-radius: 999px;
+				background: #eef3ef;
+				color: #31503b;
+				font-size: 11px;
+			}
+
+			.file-link {
+				display: inline-block;
+				color: var(--info);
+				text-decoration: none;
+				font-weight: 600;
+			}
+
+			.file-link:hover {
+				text-decoration: underline;
+			}
+
+			.file-missing {
+				color: var(--muted);
+				font-style: italic;
+			}
+
+			.empty {
+				color: var(--muted);
+				font-style: italic;
+			}
+
+			.pagination {
+				padding: 10px 16px 0;
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				gap: 10px;
+				flex-wrap: wrap;
+			}
+
+			.pagination-summary {
+				font-size: 12px;
+				color: var(--muted);
+			}
+
+			.pagination-controls {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				flex-wrap: wrap;
+			}
+
+			.pagination-controls button,
+			.pagination-controls select {
+				border: 1px solid #c9d9cc;
+				background: #ffffff;
+				color: var(--text);
+				border-radius: 8px;
+				padding: 6px 10px;
+				font-size: 12px;
+			}
+
+			.pagination-controls button {
+				cursor: pointer;
+			}
+
+			.pagination-controls button:hover:not(:disabled) {
+				border-color: #9ab8a0;
+			}
+
+			.pagination-controls button:disabled {
+				cursor: not-allowed;
+				opacity: 0.5;
+			}
+
+			.page-size-label,
+			.page-info {
+				font-size: 12px;
+				color: var(--muted);
+			}
+
+			.hint {
+				margin: 0;
+				padding: 10px 16px 14px;
+				font-size: 12px;
+				color: var(--muted);
+			}
+
+			@media (max-width: 720px) {
+				.wrapper {
+					margin: 8px auto;
+					padding: 0 8px;
+				}
+
+				.header,
+				.summary,
+				.details {
+					padding-left: 12px;
+					padding-right: 12px;
+				}
+
+				.status {
+					margin-left: 12px;
+					margin-right: 12px;
+					flex-direction: column;
+					align-items: stretch;
+				}
+
+				.status button {
+					width: 100%;
+				}
+
+				th,
+				td {
+					padding: 8px 9px;
+					font-size: 12px;
+				}
+
+				.pagination {
+					padding-left: 12px;
+					padding-right: 12px;
+				}
+
+				.pagination-controls {
+					width: 100%;
+				}
+
+				.page-size-label {
+					flex: 1 1 100%;
+				}
+
+				#pageSizeSelect {
+					flex: 1 1 100%;
+				}
+
+				#prevPageButton,
+				#nextPageButton {
+					flex: 1 1 calc(50% - 6px);
+				}
+
+				#pageInfo {
+					width: 100%;
+					text-align: center;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<main class="wrapper">
+			<section class="panel">
+				<header class="header">
+					<h1 class="title">Visor de Comprobantes</h1>
+					<div class="meta" id="meta">Esperando contexto del chat...</div>
+				</header>
+
+				<div class="summary">
+					<article class="kpi">
+						<div class="kpi-label">Comprobantes aprobados</div>
+						<div class="kpi-value" id="totalReceipts">0</div>
+						<div class="kpi-sub" id="rowsCount">Filas: 0</div>
+					</article>
+					<article class="kpi">
+						<div class="kpi-label">Con archivo</div>
+						<div class="kpi-value good" id="withFileCount">0</div>
+						<div class="kpi-sub" id="withoutFileCount">Sin archivo: 0</div>
+					</article>
+					<article class="kpi">
+						<div class="kpi-label">Monto total aprobado</div>
+						<div class="kpi-value" id="totalAmount">0</div>
+						<div class="kpi-sub" id="source">Fuente: -</div>
+					</article>
+					<article class="kpi">
+						<div class="kpi-label">Player ID</div>
+						<div class="kpi-value kpi-value-small" id="playerId">-</div>
+						<div class="kpi-sub" id="lastUpdated">Ultima actualizacion: -</div>
+					</article>
+				</div>
+
+				<div class="status" id="statusBox">
+					<strong id="statusTitle">Inicializando modulo</strong>
+					<button type="button" id="refreshButton">Actualizar</button>
+				</div>
+
+				<div class="details">
+					<span id="fileCoverage">Cobertura de archivos: -</span>
+				</div>
+
+				<div class="table-container">
+					<table>
+						<thead>
+							<tr>
+								<th>Fecha</th>
+								<th>Estado</th>
+								<th>Tipo</th>
+								<th>Monto</th>
+								<th>Moneda</th>
+								<th>Referencia</th>
+								<th>Comprobante</th>
+							</tr>
+						</thead>
+						<tbody id="rows"></tbody>
+					</table>
+				</div>
+
+				<div class="pagination" id="pagination" hidden>
+					<span class="pagination-summary" id="paginationSummary"
+						>Mostrando 0-0 de 0</span
+					>
+					<div class="pagination-controls">
+						<label class="page-size-label" for="pageSizeSelect"
+							>Filas por pagina</label
+						>
+						<select id="pageSizeSelect" aria-label="Filas por pagina">
+							<option value="10" selected>10</option>
+							<option value="25">25</option>
+							<option value="50">50</option>
+						</select>
+						<button type="button" id="prevPageButton">Anterior</button>
+						<span class="page-info" id="pageInfo">Pagina 1 de 1</span>
+						<button type="button" id="nextPageButton">Siguiente</button>
+					</div>
+				</div>
+
+				<p class="hint">
+					Este tab muestra unicamente comprobantes con estado approved. La conexion y autenticacion usan la misma logica de sesion/contexto del modulo de cargas y retiros.
+				</p>
+			</section>
+		</main>
+
+		<script>
+			const BACKOFFICE_SESSION_STORAGE_KEY = 'cw_frontend_backoffice_session';
+			const DEFAULT_BACKOFFICE_API_HOST = 'https://api-bko.jugaygana.site';
+			const BACKOFFICE_DOMAIN_TOKEN = 'Y3bqh7E5Qqlb57c';
+			const DEFAULT_GLOBAL_CONTACT_ID = '805485377';
+			const sessionHelper = window.CWConversationModuleSession || null;
+			const UUID_PATTERN =
+				/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+			const PLAYER_TRANSFER_RECEIPT_TYPES = {
+				INCOMING: 0,
+				OUTGOING: 1,
+			};
+			const TRANSFER_RECEIPT_INCOMING_KEYWORDS = [
+				'incoming',
+				'ingres',
+				'carga',
+				'deposit',
+				'credit',
+				'credito',
+			];
+			const TRANSFER_RECEIPT_OUTGOING_KEYWORDS = [
+				'outgoing',
+				'egres',
+				'egreso',
+				'withdraw',
+				'withdrawal',
+				'debit',
+				'debito',
+				'retiro',
+				'retir',
+				'retirada',
+				'extrac',
+				'cashout',
+				'cash out',
+				'payout',
+				'outbound',
+				'salida',
+				'premio',
+			];
+
+			const rowsEl = document.getElementById('rows');
+			const metaEl = document.getElementById('meta');
+			const totalReceiptsEl = document.getElementById('totalReceipts');
+			const withFileCountEl = document.getElementById('withFileCount');
+			const withoutFileCountEl = document.getElementById('withoutFileCount');
+			const totalAmountEl = document.getElementById('totalAmount');
+			const sourceEl = document.getElementById('source');
+			const playerIdEl = document.getElementById('playerId');
+			const lastUpdatedEl = document.getElementById('lastUpdated');
+			const rowsCountEl = document.getElementById('rowsCount');
+			const fileCoverageEl = document.getElementById('fileCoverage');
+			const statusBoxEl = document.getElementById('statusBox');
+			const statusTitleEl = document.getElementById('statusTitle');
+			const refreshButtonEl = document.getElementById('refreshButton');
+			const paginationEl = document.getElementById('pagination');
+			const paginationSummaryEl = document.getElementById('paginationSummary');
+			const pageSizeSelectEl = document.getElementById('pageSizeSelect');
+			const prevPageButtonEl = document.getElementById('prevPageButton');
+			const nextPageButtonEl = document.getElementById('nextPageButton');
+			const pageInfoEl = document.getElementById('pageInfo');
+
+			const urlParams = new URLSearchParams(window.location.search);
+			const GLOBAL_CONTACT_ID = String(
+				urlParams.get('globalcontactId') ||
+					urlParams.get('globalContactId') ||
+					DEFAULT_GLOBAL_CONTACT_ID
+			).trim();
+			const isDebugEnabled =
+				urlParams.get('debug') === '1' || urlParams.get('debug') === 'true';
+			const debugLog = (...args) => {
+				if (!isDebugEnabled) {
+					return;
+				}
+
+				console.log(...args);
+			};
+
+			const state = {
+				context: null,
+				playerId: '',
+				rows: [],
+				source: 'none',
+				loading: false,
+				lastContextFingerprint: '',
+				lastContextReceivedAt: 0,
+				pagination: {
+					page: 1,
+					pageSize: 10,
+				},
+			};
+
+			const formatNumber = value =>
+				new Intl.NumberFormat('es-UY', {
+					minimumFractionDigits: 0,
+					maximumFractionDigits: 2,
+				}).format(value || 0);
+
+			const formatDate = timestamp => {
+				if (typeof timestamp !== 'number' || Number.isNaN(timestamp)) {
+					return '-';
+				}
+
+				try {
+					return new Intl.DateTimeFormat('es-UY', {
+						dateStyle: 'short',
+						timeStyle: 'short',
+					}).format(new Date(timestamp));
+				} catch {
+					return new Date(timestamp).toISOString();
+				}
+			};
+
+			const escapeHTML = value =>
+				String(value ?? '')
+					.replace(/&/g, '&amp;')
+					.replace(/</g, '&lt;')
+					.replace(/>/g, '&gt;')
+					.replace(/"/g, '&quot;')
+					.replace(/'/g, '&#39;');
+
+			const normalizeText = value =>
+				String(value || '')
+					.trim()
+					.toLowerCase();
+
+			const normalizeContactId = value => String(value ?? '').trim();
+			const normalizePhone = value => String(value || '').replace(/\D/g, '');
+
+			const uniq = values => {
+				const seen = new Set();
+				return (Array.isArray(values) ? values : []).filter(value => {
+					const normalized = String(value || '').trim();
+					if (!normalized || seen.has(normalized)) {
+						return false;
+					}
+
+					seen.add(normalized);
+					return true;
+				});
+			};
+
+			const hasKeywordMatch = (value, keywords) => {
+				if (!value) {
+					return false;
+				}
+
+				return (Array.isArray(keywords) ? keywords : []).some(keyword =>
+					value.includes(keyword)
+				);
+			};
+
+			const parseIntegerValue = value => {
+				if (typeof value === 'number') {
+					return Number.isFinite(value) ? Math.trunc(value) : null;
+				}
+
+				if (typeof value !== 'string') {
+					return null;
+				}
+
+				const parsed = Number(value.trim());
+				return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+			};
+
+			const parseMoneyAmount = value => {
+				if (typeof value === 'number') {
+					return Number.isFinite(value) ? value : null;
+				}
+
+				if (typeof value !== 'string') {
+					return null;
+				}
+
+				const normalizedValue = value.trim();
+				if (!normalizedValue) {
+					return null;
+				}
+
+				const compactValue = normalizedValue.replace(/\s/g, '');
+				const hasComma = compactValue.includes(',');
+				const hasDot = compactValue.includes('.');
+
+				let numericCandidate = compactValue;
+
+				if (hasComma && hasDot) {
+					const lastCommaIndex = compactValue.lastIndexOf(',');
+					const lastDotIndex = compactValue.lastIndexOf('.');
+
+					if (lastCommaIndex > lastDotIndex) {
+						numericCandidate = compactValue.replace(/\./g, '').replace(',', '.');
+					} else {
+						numericCandidate = compactValue.replace(/,/g, '');
+					}
+				} else if (hasComma && !hasDot) {
+					numericCandidate = compactValue.replace(',', '.');
+				}
+
+				const parsed = Number(numericCandidate);
+				return Number.isFinite(parsed) ? parsed : null;
+			};
+
+			const resolveTimestampValue = value => {
+				if (value === null || value === undefined || value === '') {
+					return null;
+				}
+
+				if (typeof value === 'number') {
+					if (!Number.isFinite(value)) {
+						return null;
+					}
+
+					return value < 1e12 ? Math.round(value * 1000) : Math.round(value);
+				}
+
+				const normalized = String(value).trim();
+				if (!normalized) {
+					return null;
+				}
+
+				if (/^\d+(\.\d+)?$/.test(normalized)) {
+					const numericValue = Number(normalized);
+					if (!Number.isFinite(numericValue)) {
+						return null;
+					}
+
+					return numericValue < 1e12
+						? Math.round(numericValue * 1000)
+						: Math.round(numericValue);
+				}
+
+				const parsed = Date.parse(normalized);
+				return Number.isNaN(parsed) ? null : parsed;
+			};
+
+			const normalizeCurrencyCode = value => {
+				const normalized = String(value || '').trim().toUpperCase();
+				return /^[A-Z]{3}$/.test(normalized) ? normalized : '-';
+			};
+
+			const parseAccountId = value => {
+				const parsed = Number(value);
+				if (Number.isNaN(parsed) || parsed <= 0) {
+					return null;
+				}
+
+				return parsed;
+			};
+
+			const isLikelyApprovedStatus = statusValue => {
+				const normalizedStatus = normalizeText(statusValue);
+				if (!normalizedStatus) {
+					return false;
+				}
+
+				return /(^|[^a-z])approved([^a-z]|$)/.test(normalizedStatus);
+			};
+
+			const parseBackofficeSession = () => {
+				if (sessionHelper?.parseSession) {
+					return sessionHelper.parseSession();
+				}
+
+				try {
+					const rawSession = window.localStorage.getItem(
+						BACKOFFICE_SESSION_STORAGE_KEY
+					);
+					if (!rawSession) {
+						return null;
+					}
+
+					return JSON.parse(rawSession);
+				} catch {
+					return null;
+				}
+			};
+
+			const resolveParentConfig = () => {
+				try {
+					if (window.parent && window.parent !== window) {
+						return window.parent.chatwootConfig || {};
+					}
+				} catch {
+					return {};
+				}
+
+				return window.chatwootConfig || {};
+			};
+
+			const parseTenantId = tenantId => {
+				const normalizedTenantId = String(tenantId || '').trim();
+				if (!normalizedTenantId) {
+					return '';
+				}
+
+				return normalizedTenantId.includes('::')
+					? normalizedTenantId.split('::')[0]
+					: normalizedTenantId;
+			};
+
+			const parseTenantArray = value => {
+				if (!value) {
+					return [];
+				}
+
+				if (Array.isArray(value)) {
+					return value;
+				}
+
+				if (typeof value === 'object') {
+					return [value];
+				}
+
+				return [];
+			};
+
+			const resolveActiveTenant = ({ session, parentConfig, accountId }) => {
+				const tenants = [
+					...parseTenantArray(session?.chatwoots),
+					...parseTenantArray(session?.tenants),
+					...parseTenantArray(parentConfig?.tenants),
+					...parseTenantArray(parentConfig?.chatwoots),
+				];
+
+				if (!tenants.length) {
+					return null;
+				}
+
+				if (accountId) {
+					const tenantByAccount = tenants.find(tenant => {
+						const tenantAccountId = parseAccountId(
+							tenant?.accountId ?? tenant?.account_id ?? tenant?.accountID
+						);
+
+						return tenantAccountId === accountId;
+					});
+
+					if (tenantByAccount) {
+						return tenantByAccount;
+					}
+				}
+
+				const findTenantByCandidateIds = candidateIds => {
+					const normalizedCandidateIds = uniq(candidateIds)
+						.map(candidate => parseTenantId(candidate))
+						.filter(Boolean);
+
+					if (!normalizedCandidateIds.length) {
+						return null;
+					}
+
+					return (
+						tenants.find(tenant => {
+							const tenantIds = uniq([
+								tenant?.tenantId,
+								tenant?.id,
+								tenant?.slug,
+								tenant?.key,
+							])
+								.map(candidate => parseTenantId(candidate))
+								.filter(Boolean);
+
+							return tenantIds.some(tenantId =>
+								normalizedCandidateIds.includes(tenantId)
+							);
+						}) || null
+					);
+				};
+
+				const runtimeTenant = findTenantByCandidateIds([
+					parentConfig?.activeTenantId,
+					parentConfig?.tenantId,
+					parentConfig?.tenant,
+				]);
+				if (runtimeTenant) {
+					return runtimeTenant;
+				}
+
+				const sessionTenant = findTenantByCandidateIds([
+					session?.selectedTenantId,
+					session?.tenantId,
+					session?.tenant,
+					session?.activeTenantId,
+				]);
+				if (sessionTenant) {
+					return sessionTenant;
+				}
+
+				return tenants[0];
+			};
+
+			const resolveBackofficeApiToken = ({ session, activeTenant }) => {
+				if (sessionHelper?.resolveBackofficeApiToken) {
+					const helperToken = sessionHelper.resolveBackofficeApiToken(
+						session,
+						activeTenant
+					);
+					if (helperToken) {
+						return helperToken;
+					}
+				}
+
+				const tokenCandidates = uniq([
+					session?.backofficeApiAccessToken,
+					session?.backoffice_api_access_token,
+					session?.backofficeApiToken,
+					session?.backoffice_api_token,
+					session?.backofficeAccessToken,
+					session?.backoffice_access_token,
+					session?.apiAccessToken,
+					session?.api_access_token,
+					session?.apiToken,
+					session?.api_token,
+					session?.loginAccessToken,
+					session?.login_access_token,
+					session?.accessToken,
+					session?.access_token,
+					session?.apiKey,
+					session?.api_key,
+					session?.token,
+					activeTenant?.apiAccessToken,
+					activeTenant?.api_access_token,
+					activeTenant?.apiKey,
+					activeTenant?.api_key,
+					activeTenant?.accessToken,
+					activeTenant?.access_token,
+					activeTenant?.token,
+				]);
+
+				return tokenCandidates[0] || '';
+			};
+
+			const resolveBearerToken = ({ session, activeTenant }) => {
+				if (sessionHelper?.resolveBearerToken) {
+					const helperToken = sessionHelper.resolveBearerToken(session, activeTenant);
+					if (helperToken) {
+						return helperToken;
+					}
+				}
+
+				const sessionCandidates = uniq([
+					session?.chatwootBearerToken,
+					session?.chatwoot_bearer_token,
+					session?.backofficeBearerToken,
+					session?.backoffice_bearer_token,
+					session?.bearerToken,
+					session?.bearer_token,
+				]);
+
+				if (sessionCandidates[0]) {
+					return sessionCandidates[0];
+				}
+
+				const tenantCandidates = uniq([
+					activeTenant?.accessToken,
+					activeTenant?.access_token,
+					activeTenant?.apiAccessToken,
+					activeTenant?.api_access_token,
+					activeTenant?.token,
+					activeTenant?.jwt,
+				]);
+
+				return tenantCandidates[0] || '';
+			};
+
+			const setTokenHeaders = ({ headers, token }) => {
+				if (!token) {
+					return;
+				}
+
+				headers.api_access_token = token;
+				headers['x-access-token'] = token;
+				headers['access-token'] = token;
+				headers['x-api-access-token'] = token;
+			};
+
+			const normalizeApiHost = value => {
+				if (sessionHelper?.normalizeApiHost) {
+					return sessionHelper.normalizeApiHost(value);
+				}
+
+				let normalized = String(value || '').trim();
+				if (!normalized) {
+					return '';
+				}
+
+				if (!/^https?:\/\//i.test(normalized)) {
+					normalized = `https://${normalized}`;
+				}
+
+				return normalized.replace(/\/$/, '');
+			};
+
+			const resolveApiHost = ({ parentConfig, session }) => {
+				const queryHost = normalizeApiHost(
+					urlParams.get('apihost') || urlParams.get('apiHost')
+				);
+				const runtimeHost = normalizeApiHost(
+					parentConfig?.backofficeApiHost || parentConfig?.backoffice_api_host
+				);
+				const sessionHost = normalizeApiHost(
+					session?.backofficeApiHost || session?.backoffice_api_host
+				);
+
+				let localStorageHost = '';
+				try {
+					localStorageHost = normalizeApiHost(
+						window.localStorage.getItem('cw_backoffice_api_host')
+					);
+				} catch {
+					localStorageHost = '';
+				}
+
+				return (
+					queryHost ||
+					runtimeHost ||
+					sessionHost ||
+					localStorageHost ||
+					DEFAULT_BACKOFFICE_API_HOST
+				);
+			};
+
+			const isAuthError = error => {
+				if (sessionHelper?.isAuthError) {
+					return sessionHelper.isAuthError(error);
+				}
+
+				const status = error?.status || error?.response?.status;
+				return status === 401 || status === 403;
+			};
+
+			const ensureSessionReady = async ({ forceRefresh = false } = {}) => {
+				if (!sessionHelper) {
+					return { state: 'skipped' };
+				}
+
+				const parentConfig = resolveParentConfig();
+				const session = parseBackofficeSession();
+				const apiHost = resolveApiHost({ parentConfig, session });
+
+				if (forceRefresh) {
+					return sessionHelper.refreshSession({
+						apiHost,
+						force: true,
+					});
+				}
+
+				return sessionHelper.ensureFreshSession({ apiHost });
+			};
+
+			const resolveContact = context => {
+				const conversation = context?.conversation || {};
+				const sender = conversation?.meta?.sender || {};
+				const contact = context?.contact || sender;
+
+				return {
+					contact,
+					sender,
+					conversation,
+				};
+			};
+
+			const resolveContactAttributes = context => {
+				const { contact, sender } = resolveContact(context);
+				const contactCustomAttributes = contact?.custom_attributes || {};
+				const senderCustomAttributes = sender?.custom_attributes || {};
+				const contactAdditionalAttributes = contact?.additional_attributes || {};
+				const senderAdditionalAttributes = sender?.additional_attributes || {};
+
+				return {
+					contact,
+					sender,
+					customAttributes: {
+						...senderCustomAttributes,
+						...contactCustomAttributes,
+					},
+					additionalAttributes: {
+						...senderAdditionalAttributes,
+						...contactAdditionalAttributes,
+					},
+				};
+			};
+
+			const resolveContextContactCandidates = context => {
+				const contact = context?.contact || {};
+				const sender = context?.conversation?.meta?.sender || {};
+				const conversation = context?.conversation || {};
+
+				return uniq([
+					contact?.id,
+					sender?.id,
+					conversation?.contactId,
+					conversation?.contact_id,
+					contact?.identifier,
+					sender?.identifier,
+					conversation?.identifier,
+					conversation?.meta?.sender?.identifier,
+				])
+					.map(candidate => normalizeContactId(candidate))
+					.filter(Boolean);
+			};
+
+			const isGlobalContactContext = context => {
+				const globalContactId = normalizeContactId(GLOBAL_CONTACT_ID);
+				if (!globalContactId) {
+					return false;
+				}
+
+				const candidateIds = resolveContextContactCandidates(context);
+				if (!candidateIds.length) {
+					return false;
+				}
+
+				return candidateIds.some(candidateId => candidateId === globalContactId);
+			};
+
+			const extractValueByKeys = (source, keys) => {
+				if (!source || typeof source !== 'object') {
+					return '';
+				}
+
+				for (const key of keys) {
+					if (source[key] !== undefined && source[key] !== null && source[key] !== '') {
+						return String(source[key]).trim();
+					}
+				}
+
+				return '';
+			};
+
+			const resolveKnownPlayerIdCandidates = ({ contact, sender }) => {
+				const customAttributes = {
+					...(sender?.custom_attributes || {}),
+					...(contact?.custom_attributes || {}),
+				};
+				const additionalAttributes = {
+					...(sender?.additional_attributes || {}),
+					...(contact?.additional_attributes || {}),
+				};
+
+				const knownKeys = [
+					'playerId',
+					'player_id',
+					'playerid',
+					'playerUUID',
+					'player_uuid',
+					'jugadorId',
+					'jugador_id',
+					'idJugador',
+					'bkPlayerId',
+					'bk_player_id',
+					'externalPlayerId',
+					'external_player_id',
+				];
+
+				const candidates = uniq([
+					urlParams.get('playerId'),
+					urlParams.get('player_id'),
+					extractValueByKeys(contact, knownKeys),
+					extractValueByKeys(sender, knownKeys),
+					extractValueByKeys(customAttributes, knownKeys),
+					extractValueByKeys(additionalAttributes, knownKeys),
+					contact?.identifier,
+					sender?.identifier,
+					urlParams.get('identifier'),
+				]);
+
+				return candidates.filter(value => UUID_PATTERN.test(value));
+			};
+
+			const resolveIdentity = ({ contact, sender }) => {
+				const customAttributes = {
+					...(sender?.custom_attributes || {}),
+					...(contact?.custom_attributes || {}),
+				};
+				const additionalAttributes = {
+					...(sender?.additional_attributes || {}),
+					...(contact?.additional_attributes || {}),
+				};
+
+				const emails = uniq([
+					contact?.email,
+					sender?.email,
+					customAttributes?.email,
+					additionalAttributes?.email,
+					urlParams.get('email'),
+				]).map(value => normalizeText(value));
+
+				const phones = uniq([
+					contact?.phone_number,
+					contact?.phoneNumber,
+					contact?.phone,
+					sender?.phone_number,
+					sender?.phoneNumber,
+					sender?.phone,
+					customAttributes?.phone,
+					customAttributes?.phone_number,
+					additionalAttributes?.phone,
+					additionalAttributes?.phone_number,
+					urlParams.get('phone'),
+				])
+					.map(value => normalizePhone(value))
+					.filter(Boolean);
+
+				const usernames = uniq([
+					contact?.identifier,
+					contact?.username,
+					contact?.name,
+					sender?.identifier,
+					sender?.username,
+					sender?.name,
+					customAttributes?.appuser,
+					urlParams.get('identifier'),
+				]).map(value => normalizeText(value));
+
+				const platformIds = uniq([
+					contact?.id,
+					contact?.identifier,
+					sender?.id,
+					sender?.identifier,
+					urlParams.get('contactId'),
+					urlParams.get('identifier'),
+				]).map(value => String(value || '').trim());
+
+				return {
+					emails,
+					phones,
+					usernames,
+					platformIds,
+				};
+			};
+
+			const resolveBackofficeCredentialsFromContext = context => {
+				const { customAttributes, additionalAttributes } =
+					resolveContactAttributes(context);
+
+				const appUser = extractValueByKeys(customAttributes, [
+					'appuser',
+					'appUser',
+					'username',
+				]);
+				const appPassword = extractValueByKeys(customAttributes, [
+					'apppassword',
+					'appPassword',
+					'password',
+					'api_access_token',
+					'apiAccessToken',
+					'token',
+				]);
+				const platform = extractValueByKeys(customAttributes, [
+					'platform',
+					'tenant',
+					'tenantId',
+					'tenant_id',
+				]);
+
+				const backofficeApiToken = extractValueByKeys(customAttributes, [
+					'backofficeApiToken',
+					'backoffice_api_token',
+					'backofficeApiAccessToken',
+					'backoffice_api_access_token',
+					'apiAccessToken',
+					'api_access_token',
+					'token',
+					'apppassword',
+				]);
+
+				const bearerToken = extractValueByKeys(customAttributes, [
+					'bearerToken',
+					'bearer_token',
+					'jwt',
+					'token',
+				]);
+
+				const tenantId = extractValueByKeys(customAttributes, [
+					'tenantId',
+					'tenant_id',
+					'tenant',
+					'platform',
+				]);
+
+				return {
+					appUser,
+					appPassword,
+					platform,
+					backofficeApiToken,
+					bearerToken,
+					tenantId,
+					apiHost: extractValueByKeys(additionalAttributes, [
+						'backofficeApiHost',
+						'backoffice_api_host',
+						'apiHost',
+						'api_host',
+					]),
+				};
+			};
+
+			const resolveAccountIdFromContext = context => {
+				const { contact, sender, customAttributes, additionalAttributes } =
+					resolveContactAttributes(context);
+
+				const accountCandidates = uniq([
+					context?.accountId,
+					context?.account_id,
+					context?.conversation?.accountId,
+					context?.conversation?.account_id,
+					context?.conversation?.meta?.accountId,
+					context?.conversation?.meta?.account_id,
+					contact?.accountId,
+					contact?.account_id,
+					sender?.accountId,
+					sender?.account_id,
+					extractValueByKeys(customAttributes, [
+						'accountId',
+						'account_id',
+						'chatwootAccountId',
+						'chatwoot_account_id',
+					]),
+					extractValueByKeys(additionalAttributes, [
+						'accountId',
+						'account_id',
+						'chatwootAccountId',
+						'chatwoot_account_id',
+					]),
+					urlParams.get('accountId'),
+					urlParams.get('account_id'),
+				]);
+
+				return (
+					accountCandidates
+						.map(candidate => parseAccountId(candidate))
+						.find(Boolean) || null
+				);
+			};
+
+			const resolveRequestContext = context => {
+				const parentConfig = resolveParentConfig();
+				const session = parseBackofficeSession();
+				const contextCredentials = resolveBackofficeCredentialsFromContext(context);
+				const contextAccountId = resolveAccountIdFromContext(context);
+				const requestedAccountId =
+					parseAccountId(urlParams.get('accountId')) ||
+					parseAccountId(urlParams.get('account_id')) ||
+					parseAccountId(parentConfig?.accountId) ||
+					parseAccountId(parentConfig?.account_id) ||
+					contextAccountId;
+				const activeTenant = resolveActiveTenant({
+					session,
+					parentConfig,
+					accountId: requestedAccountId,
+				});
+
+				const accountId =
+					requestedAccountId ||
+					parseAccountId(
+						activeTenant?.accountId ??
+							activeTenant?.account_id ??
+							activeTenant?.accountID
+					) ||
+					parseAccountId(session?.accountId ?? session?.account_id);
+
+				const tenantId = uniq([
+					urlParams.get('tenantId'),
+					urlParams.get('tenant'),
+					contextCredentials.tenantId,
+					contextCredentials.platform,
+					parentConfig?.tenantId,
+					parentConfig?.tenant,
+					parentConfig?.activeTenantId,
+					session?.selectedTenantId,
+					session?.tenantId,
+					session?.tenant,
+					session?.activeTenantId,
+					activeTenant?.tenantId,
+					activeTenant?.id,
+					activeTenant?.slug,
+					activeTenant?.key,
+				])
+					.map(candidate => parseTenantId(candidate))
+					.find(Boolean);
+
+				const backofficeApiToken = resolveBackofficeApiToken({
+					session,
+					activeTenant,
+				}) || contextCredentials.backofficeApiToken;
+				const bearerToken = resolveBearerToken({
+					session,
+					activeTenant,
+				}) || contextCredentials.bearerToken;
+				const effectiveBearerToken = bearerToken || backofficeApiToken;
+				const apiHost =
+					resolveApiHost({ parentConfig, session }) ||
+					normalizeApiHost(contextCredentials.apiHost);
+
+				const hasLegacySessionContext =
+					Boolean(tenantId) &&
+					Boolean(backofficeApiToken) &&
+					Boolean(effectiveBearerToken);
+				const hasContactCredentialContext =
+					Boolean(contextCredentials.appUser) &&
+					Boolean(contextCredentials.appPassword) &&
+					Boolean(contextCredentials.platform);
+				const canBootstrapWithAccount = Boolean(accountId);
+
+				if (
+					!hasLegacySessionContext &&
+					!hasContactCredentialContext &&
+					!canBootstrapWithAccount
+				) {
+					const missingContextFields = [];
+					if (!tenantId && !contextCredentials.platform) {
+						missingContextFields.push('tenantId');
+					}
+					if (!backofficeApiToken && !contextCredentials.appPassword) {
+						missingContextFields.push('backofficeApiToken');
+					}
+					if (!effectiveBearerToken && !contextCredentials.appUser) {
+						missingContextFields.push('bearerToken');
+					}
+
+					const error = new Error(
+						`Credenciales o tenant faltantes en la sesion de backoffice (${missingContextFields.join(', ')}).`
+					);
+					error.code = 'MISSING_BACKOFFICE_CONTEXT';
+					throw error;
+				}
+
+				const headers = {
+					Accept: 'application/json',
+					'x-domain-token': BACKOFFICE_DOMAIN_TOKEN,
+				};
+
+				if (effectiveBearerToken) {
+					headers.Authorization = `Bearer ${effectiveBearerToken}`;
+				}
+
+				if (tenantId) {
+					headers['x-tenant-id'] = tenantId;
+					headers['x-tenant'] = tenantId;
+				}
+
+				setTokenHeaders({ headers, token: backofficeApiToken });
+
+				if (contextCredentials.appUser) {
+					headers['x-app-user'] = contextCredentials.appUser;
+				}
+
+				if (contextCredentials.appPassword) {
+					headers['x-app-password'] = contextCredentials.appPassword;
+				}
+
+				if (contextCredentials.platform) {
+					headers['x-platform'] = contextCredentials.platform;
+					headers['x-client-platform'] = contextCredentials.platform;
+				}
+
+				if (accountId) {
+					headers['x-account-id'] = String(accountId);
+				}
+
+				return {
+					headers,
+					tenantId,
+					accountId,
+					apiHost,
+				};
+			};
+
+			const normalizeListPayload = payload => {
+				if (Array.isArray(payload)) {
+					return payload;
+				}
+
+				if (!payload || typeof payload !== 'object') {
+					return [];
+				}
+
+				const listKeys = [
+					'data',
+					'players',
+					'items',
+					'results',
+					'records',
+					'content',
+					'list',
+				];
+
+				for (const key of listKeys) {
+					if (Array.isArray(payload[key])) {
+						return payload[key];
+					}
+
+					if (payload[key] && typeof payload[key] === 'object') {
+						for (const nestedKey of listKeys) {
+							if (Array.isArray(payload[key][nestedKey])) {
+								return payload[key][nestedKey];
+							}
+						}
+					}
+				}
+
+				return [];
+			};
+
+			const unwrapObjectData = payload => {
+				if (!payload || typeof payload !== 'object') {
+					return null;
+				}
+
+				if (payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data)) {
+					return payload.data;
+				}
+
+				return payload;
+			};
+
+			const buildURL = ({ base, params = {} }) => {
+				const url = new URL(base);
+				Object.entries(params).forEach(([key, value]) => {
+					if (value === null || value === undefined || value === '') {
+						return;
+					}
+
+					url.searchParams.set(key, String(value));
+				});
+
+				return url.toString();
+			};
+
+			const fetchJSON = async ({ url, headers, params = {} }) => {
+				const requestHeaders = new Headers(headers || {});
+				requestHeaders.set('x-domain-token', BACKOFFICE_DOMAIN_TOKEN);
+
+				const requestUrl = buildURL({ base: url, params });
+				debugLog('[Comprobantes App] Request saliente', {
+					url: requestUrl,
+					hasDomainToken: requestHeaders.has('x-domain-token'),
+					hasAuthorization: requestHeaders.has('authorization'),
+					tenantId: requestHeaders.get('x-tenant-id') || '',
+					accountId: requestHeaders.get('x-account-id') || '',
+				});
+
+				const response = await fetch(requestUrl, {
+					method: 'GET',
+					headers: requestHeaders,
+					credentials: 'include',
+				});
+
+				let payload = null;
+				try {
+					payload = await response.json();
+				} catch {
+					payload = null;
+				}
+
+				if (!response.ok) {
+					const error = new Error(`Request failed: ${response.status}`);
+					error.status = response.status;
+					error.payload = payload;
+					throw error;
+				}
+
+				return payload;
+			};
+
+			const fetchChatwootByAccountId = async ({ requestContext }) => {
+				if (!requestContext?.accountId) {
+					return null;
+				}
+
+				const lookupHeaders = {
+					Accept: 'application/json',
+					'x-account-id': String(requestContext.accountId),
+				};
+
+				const responsePayload = await fetchJSON({
+					url: `${requestContext.apiHost}/v1/chatwoots/by-account/${encodeURIComponent(
+						requestContext.accountId
+					)}`,
+					headers: lookupHeaders,
+				});
+
+				return unwrapObjectData(responsePayload);
+			};
+
+			const enrichRequestContextFromAccount = async requestContext => {
+				if (!requestContext?.accountId) {
+					return requestContext;
+				}
+
+				try {
+					const accountChatwoot = await fetchChatwootByAccountId({
+						requestContext,
+					});
+
+					if (!accountChatwoot || typeof accountChatwoot !== 'object') {
+						return requestContext;
+					}
+
+					const nextTenantId = parseTenantId(
+						accountChatwoot?.tenantId ||
+							accountChatwoot?.tenant_id ||
+							requestContext.tenantId
+					);
+					const nextAccessToken = String(
+						accountChatwoot?.accessToken || accountChatwoot?.access_token || ''
+					).trim();
+
+					const nextHeaders = {
+						...(requestContext.headers || {}),
+					};
+
+					if (nextTenantId) {
+						nextHeaders['x-tenant-id'] = nextTenantId;
+						nextHeaders['x-tenant'] = nextTenantId;
+					}
+
+					if (nextAccessToken) {
+						nextHeaders.Authorization = `Bearer ${nextAccessToken}`;
+						setTokenHeaders({ headers: nextHeaders, token: nextAccessToken });
+					}
+
+					return {
+						...requestContext,
+						tenantId: nextTenantId || requestContext.tenantId,
+						headers: nextHeaders,
+					};
+				} catch (error) {
+					debugLog(
+						'[Comprobantes App] No se pudo resolver tenant/token por accountId:',
+						error
+					);
+					return requestContext;
+				}
+			};
+
+			const fetchPlayerByPlatformId = async ({ requestContext, platformId }) => {
+				if (!platformId) {
+					return '';
+				}
+
+				const responsePayload = await fetchJSON({
+					url: `${requestContext.apiHost}/v1/players/by-platform-id`,
+					headers: requestContext.headers,
+					params: {
+						platformId,
+					},
+				});
+
+				const player = unwrapObjectData(responsePayload);
+				const playerId = String(
+					player?.id || player?.playerId || player?.player_id || ''
+				).trim();
+
+				return UUID_PATTERN.test(playerId) ? playerId : '';
+			};
+
+			const fetchPlayersList = async ({ requestContext }) => {
+				const responsePayload = await fetchJSON({
+					url: `${requestContext.apiHost}/v1/players`,
+					headers: requestContext.headers,
+					params: {
+						tenantId: requestContext.tenantId,
+					},
+				});
+
+				return normalizeListPayload(responsePayload);
+			};
+
+			const matchPlayerIdFromPlayers = ({ players, identity }) => {
+				const playerRows = Array.isArray(players) ? players : [];
+
+				for (const player of playerRows) {
+					const playerId = String(player?.id || '').trim();
+					if (!UUID_PATTERN.test(playerId)) {
+						continue;
+					}
+
+					const playerEmail = normalizeText(player?.email);
+					const playerPhoneCandidates = [
+						normalizePhone(player?.phone),
+						normalizePhone(player?.phoneNumber),
+						normalizePhone(player?.phone_number),
+						normalizePhone(player?.agentPhone),
+					].filter(Boolean);
+					const playerUsernameCandidates = [
+						normalizeText(player?.platformUsername),
+						normalizeText(player?.username),
+						normalizeText(player?.name),
+					].filter(Boolean);
+					const playerPlatformId = String(player?.platformId || '').trim();
+
+					if (playerEmail && identity.emails.includes(playerEmail)) {
+						return playerId;
+					}
+
+					if (
+						playerPhoneCandidates.some(phone => identity.phones.includes(phone))
+					) {
+						return playerId;
+					}
+
+					if (
+						playerUsernameCandidates.some(username =>
+							identity.usernames.includes(username)
+						)
+					) {
+						return playerId;
+					}
+
+					if (playerPlatformId && identity.platformIds.includes(playerPlatformId)) {
+						return playerId;
+					}
+				}
+
+				return '';
+			};
+
+			const resolvePlayerId = async ({ context, requestContext }) => {
+				const { contact, sender } = resolveContact(context);
+				const knownCandidates = resolveKnownPlayerIdCandidates({ contact, sender });
+
+				if (knownCandidates.length) {
+					return knownCandidates[0];
+				}
+
+				const identity = resolveIdentity({ contact, sender });
+
+				for (const platformId of identity.platformIds) {
+					try {
+						const resolvedPlayerId = await fetchPlayerByPlatformId({
+							requestContext,
+							platformId,
+						});
+						if (resolvedPlayerId) {
+							return resolvedPlayerId;
+						}
+					} catch {
+						// Continue with next strategy.
+					}
+				}
+
+				const players = await fetchPlayersList({ requestContext });
+				return matchPlayerIdFromPlayers({ players, identity });
+			};
+
+			const resolveTransferReceiptTypeValue = receipt =>
+				parseIntegerValue(
+					receipt?.type ??
+						receipt?.transferType ??
+						receipt?.transfer_type ??
+						receipt?.direction ??
+						receipt?.movementDirection ??
+						receipt?.movement_direction
+				);
+
+			const resolveTransferReceiptTypeText = receipt =>
+				receipt?.typeText ??
+				receipt?.type_text ??
+				receipt?.transferTypeText ??
+				receipt?.transfer_type_text ??
+				receipt?.directionText ??
+				receipt?.direction_text ??
+				'';
+
+			const stringifyForKeywordMatch = value => {
+				if (value === null || value === undefined) {
+					return '';
+				}
+
+				if (typeof value === 'string') {
+					return value;
+				}
+
+				try {
+					return JSON.stringify(value);
+				} catch {
+					return '';
+				}
+			};
+
+			const buildTransferReceiptContextText = receipt => {
+				return normalizeText(
+					[
+						resolveTransferReceiptTypeText(receipt),
+						receipt?.origin,
+						receipt?.statusText,
+						receipt?.status_text,
+						receipt?.status,
+						receipt?.notes,
+						receipt?.description,
+						stringifyForKeywordMatch(receipt?.metadata),
+					]
+						.filter(Boolean)
+						.join(' ')
+				);
+			};
+
+			const resolveTransferReceiptDirection = receipt => {
+				const typeValue = resolveTransferReceiptTypeValue(receipt);
+
+				if (typeValue === PLAYER_TRANSFER_RECEIPT_TYPES.INCOMING) {
+					return 'incoming';
+				}
+
+				if (typeValue === PLAYER_TRANSFER_RECEIPT_TYPES.OUTGOING) {
+					return 'outgoing';
+				}
+
+				const normalizedTypeText = normalizeText(resolveTransferReceiptTypeText(receipt));
+				if (normalizedTypeText) {
+					if (
+						hasKeywordMatch(
+							normalizedTypeText,
+							TRANSFER_RECEIPT_INCOMING_KEYWORDS
+						)
+					) {
+						return 'incoming';
+					}
+
+					if (
+						hasKeywordMatch(
+							normalizedTypeText,
+							TRANSFER_RECEIPT_OUTGOING_KEYWORDS
+						)
+					) {
+						return 'outgoing';
+					}
+				}
+
+				const normalizedContextText = buildTransferReceiptContextText(receipt);
+				if (normalizedContextText) {
+					if (
+						hasKeywordMatch(
+							normalizedContextText,
+							TRANSFER_RECEIPT_OUTGOING_KEYWORDS
+						)
+					) {
+						return 'outgoing';
+					}
+
+					if (
+						hasKeywordMatch(
+							normalizedContextText,
+							TRANSFER_RECEIPT_INCOMING_KEYWORDS
+						)
+					) {
+						return 'incoming';
+					}
+				}
+
+				const normalizedAmount = parseMoneyAmount(receipt?.amount);
+				if (normalizedAmount === null || normalizedAmount === 0) {
+					return null;
+				}
+
+				return normalizedAmount < 0 ? 'outgoing' : 'incoming';
+			};
+
+			const normalizeReceiptFileCandidate = value => {
+				if (value === null || value === undefined) {
+					return '';
+				}
+
+				if (typeof value === 'string') {
+					return value.trim();
+				}
+
+				if (Array.isArray(value)) {
+					for (const item of value) {
+						const candidate = normalizeReceiptFileCandidate(item);
+						if (candidate) {
+							return candidate;
+						}
+					}
+
+					return '';
+				}
+
+				if (typeof value === 'object') {
+					const objectCandidate =
+						normalizeReceiptFileCandidate(value.url) ||
+						normalizeReceiptFileCandidate(value.href) ||
+						normalizeReceiptFileCandidate(value.path) ||
+						normalizeReceiptFileCandidate(value.file) ||
+						normalizeReceiptFileCandidate(value.fileUrl) ||
+						normalizeReceiptFileCandidate(value.file_url) ||
+						normalizeReceiptFileCandidate(value.location);
+
+					return objectCandidate;
+				}
+
+				return '';
+			};
+
+			const toAbsoluteUrl = ({ candidate, apiHost }) => {
+				const normalizedCandidate = String(candidate || '').trim();
+				if (!normalizedCandidate) {
+					return '';
+				}
+
+				if (/^https?:\/\//i.test(normalizedCandidate)) {
+					return normalizedCandidate;
+				}
+
+				if (normalizedCandidate.startsWith('//')) {
+					return `https:${normalizedCandidate}`;
+				}
+
+				try {
+					return new URL(normalizedCandidate, apiHost).toString();
+				} catch {
+					return normalizedCandidate;
+				}
+			};
+
+			const resolveReceiptFileUrl = ({ receipt, apiHost }) => {
+				const fileCandidates = [
+					receipt?.file,
+					receipt?.fileUrl,
+					receipt?.file_url,
+					receipt?.receiptFile,
+					receipt?.receipt_file,
+					receipt?.voucher,
+					receipt?.voucherUrl,
+					receipt?.voucher_url,
+					receipt?.proof,
+					receipt?.proofUrl,
+					receipt?.proof_url,
+					receipt?.document,
+					receipt?.attachments,
+					receipt?.metadata?.file,
+					receipt?.metadata?.fileUrl,
+					receipt?.metadata?.file_url,
+					receipt?.metadata?.voucher,
+					receipt?.metadata?.voucherUrl,
+					receipt?.metadata?.voucher_url,
+					receipt?.metadata?.proof,
+					receipt?.metadata?.proofUrl,
+					receipt?.metadata?.proof_url,
+				];
+
+				for (const candidate of fileCandidates) {
+					const normalizedCandidate = normalizeReceiptFileCandidate(candidate);
+					if (normalizedCandidate) {
+						return toAbsoluteUrl({
+							candidate: normalizedCandidate,
+							apiHost,
+						});
+					}
+				}
+
+				return '';
+			};
+
+			const resolveReceiptFileLabel = fileUrl => {
+				const normalizedFileUrl = String(fileUrl || '').trim();
+				if (!normalizedFileUrl) {
+					return '';
+				}
+
+				try {
+					const parsedUrl = new URL(normalizedFileUrl);
+					const pathname = parsedUrl.pathname || '';
+					const segments = pathname.split('/').filter(Boolean);
+					return segments[segments.length - 1] || 'Comprobante';
+				} catch {
+					const segments = normalizedFileUrl.split('/').filter(Boolean);
+					return segments[segments.length - 1] || 'Comprobante';
+				}
+			};
+
+			const normalizeTransferReceiptRows = ({ receipts, apiHost }) => {
+				return (Array.isArray(receipts) ? receipts : [])
+					.map(receipt => {
+						const statusValue =
+							receipt?.statusText ?? receipt?.status_text ?? receipt?.status;
+						if (!isLikelyApprovedStatus(statusValue)) {
+							return null;
+						}
+
+						const amount = parseMoneyAmount(receipt?.amount);
+						if (amount === null || amount === 0) {
+							return null;
+						}
+
+						const direction = resolveTransferReceiptDirection(receipt);
+						if (!direction) {
+							return null;
+						}
+
+						const timestamp = resolveTimestampValue(
+							receipt?.createdAt ??
+								receipt?.created_at ??
+								receipt?.date ??
+								receipt?.timestamp ??
+								receipt?.transferDate ??
+								receipt?.updatedAt ??
+								receipt?.updated_at
+						);
+
+						const fileUrl = resolveReceiptFileUrl({ receipt, apiHost });
+
+						return {
+							timestamp,
+							dateLabel: formatDate(timestamp),
+							type: direction === 'incoming' ? 'Incoming' : 'Outgoing',
+							receiptId: String(receipt?.id || '').trim(),
+							status:
+								receipt?.statusText || receipt?.status_text || receipt?.status || '-',
+							amount: Math.abs(amount),
+							currency: normalizeCurrencyCode(
+								receipt?.currency || receipt?.currencyCode || receipt?.currency_code
+							),
+							reference:
+								receipt?.transferUniqueId ||
+								receipt?.transfer_unique_id ||
+								receipt?.id ||
+								receipt?.walletPaymentId ||
+								'-',
+							fileUrl,
+							fileLabel: resolveReceiptFileLabel(fileUrl),
+						};
+					})
+					.filter(Boolean);
+			};
+
+			const buildRowFingerprint = row => {
+				const roundedAmount = Number.isFinite(row?.amount)
+					? Number(row.amount).toFixed(2)
+					: '0.00';
+				const timestampBucket =
+					typeof row?.timestamp === 'number' && Number.isFinite(row.timestamp)
+						? Math.round(row.timestamp / 60000)
+						: 'none';
+
+				return [
+					row?.type || '',
+					row?.currency || '-',
+					roundedAmount,
+					row?.reference || '-',
+					row?.fileUrl || '-',
+					timestampBucket,
+				].join('|');
+			};
+
+			const buildRowUniqueKey = row => {
+				const receiptId = String(row?.receiptId || '').trim();
+				if (receiptId) {
+					return `receipt:${receiptId}`;
+				}
+
+				return `fingerprint:${buildRowFingerprint(row)}`;
+			};
+
+			const dedupeRows = rows => {
+				const seen = new Set();
+
+				return (Array.isArray(rows) ? rows : []).filter(row => {
+					const key = buildRowUniqueKey(row);
+					if (seen.has(key)) {
+						return false;
+					}
+
+					seen.add(key);
+					return true;
+				});
+			};
+
+			const fetchPlayerTransferReceipts = async ({
+				playerId,
+				requestContext,
+				unfiltered = false,
+			}) => {
+				const normalizedPlayerId = String(playerId || '').trim();
+				const shouldFilterByPlayer =
+					!unfiltered && UUID_PATTERN.test(normalizedPlayerId);
+
+				const responsePayload = await fetchJSON({
+					url: shouldFilterByPlayer
+						? `${requestContext.apiHost}/v1/player-transfer-receipts/by-player/${encodeURIComponent(
+								normalizedPlayerId
+							)}`
+						: `${requestContext.apiHost}/v1/player-transfer-receipts`,
+					headers: requestContext.headers,
+					params: shouldFilterByPlayer
+						? {}
+						: {
+								tenantId: requestContext.tenantId,
+								accountId: requestContext.accountId,
+							},
+				});
+
+				return normalizeListPayload(responsePayload);
+			};
+
+			const loadReceiptRows = async ({
+				playerId,
+				requestContext,
+				isGlobalContact = false,
+			}) => {
+				const receipts = await fetchPlayerTransferReceipts({
+					playerId,
+					requestContext,
+					unfiltered: isGlobalContact,
+				});
+
+				const rows = normalizeTransferReceiptRows({
+					receipts,
+					apiHost: requestContext.apiHost,
+				});
+
+				return {
+					rows,
+					source: isGlobalContact
+						? 'transfer_receipts_global'
+						: 'transfer_receipts_by_player',
+				};
+			};
+
+			const setStatus = ({ title, tone = 'info' }) => {
+				statusTitleEl.textContent = title;
+				statusBoxEl.classList.remove('warning', 'error');
+
+				if (tone === 'warning') {
+					statusBoxEl.classList.add('warning');
+				}
+
+				if (tone === 'error') {
+					statusBoxEl.classList.add('error');
+				}
+			};
+
+			const updatePaginationUI = ({
+				totalRows,
+				totalPages,
+				startIndex,
+				endIndex,
+			}) => {
+				const safeTotalRows = Number.isFinite(totalRows) ? totalRows : 0;
+				const safeTotalPages = Math.max(
+					1,
+					Number.isFinite(totalPages) ? totalPages : 1
+				);
+
+				paginationEl.hidden = safeTotalRows === 0;
+
+				if (safeTotalRows === 0) {
+					paginationSummaryEl.textContent = 'Mostrando 0-0 de 0';
+					pageInfoEl.textContent = 'Pagina 1 de 1';
+					prevPageButtonEl.disabled = true;
+					nextPageButtonEl.disabled = true;
+					pageSizeSelectEl.value = String(state.pagination.pageSize);
+					return;
+				}
+
+				const safeStart = Math.max(0, Math.min(startIndex, safeTotalRows - 1));
+				const safeEnd = Math.max(safeStart + 1, Math.min(endIndex, safeTotalRows));
+
+				paginationSummaryEl.textContent =
+					`Mostrando ${safeStart + 1}-${safeEnd} de ${safeTotalRows}`;
+				pageInfoEl.textContent = `Pagina ${state.pagination.page} de ${safeTotalPages}`;
+				prevPageButtonEl.disabled = state.pagination.page <= 1;
+				nextPageButtonEl.disabled = state.pagination.page >= safeTotalPages;
+				pageSizeSelectEl.value = String(state.pagination.pageSize);
+			};
+
+			const renderRows = rows => {
+				const sortedRows = [...dedupeRows(rows)].sort((left, right) => {
+					const leftTimestamp =
+						typeof left.timestamp === 'number' ? left.timestamp : -Infinity;
+					const rightTimestamp =
+						typeof right.timestamp === 'number' ? right.timestamp : -Infinity;
+
+					return rightTimestamp - leftTimestamp;
+				});
+
+				const totalRows = sortedRows.length;
+				const pageSize = Number(state.pagination.pageSize) || 10;
+				const totalPages = totalRows ? Math.ceil(totalRows / pageSize) : 1;
+
+				state.pagination.page = Math.min(
+					Math.max(1, state.pagination.page),
+					totalPages
+				);
+
+				const startIndex = totalRows ? (state.pagination.page - 1) * pageSize : 0;
+				const endIndex = Math.min(startIndex + pageSize, totalRows);
+
+				updatePaginationUI({
+					totalRows,
+					totalPages,
+					startIndex,
+					endIndex,
+				});
+
+				const visibleRows = sortedRows.slice(startIndex, endIndex);
+
+				if (!sortedRows.length) {
+					rowsEl.innerHTML =
+						'<tr><td colspan="7" class="empty">No hay comprobantes aprobados disponibles.</td></tr>';
+					return sortedRows;
+				}
+
+				rowsEl.innerHTML = visibleRows
+					.map(row => {
+						const amountClass = row.type === 'Outgoing' ? 'bad' : 'good';
+						const safeDate = escapeHTML(row.dateLabel);
+						const safeStatus = escapeHTML(row.status);
+						const safeType = escapeHTML(row.type);
+						const safeCurrency = escapeHTML(row.currency);
+						const safeReference = escapeHTML(row.reference);
+
+						const fileCell = row.fileUrl
+							? `<a class="file-link" href="${escapeHTML(
+									row.fileUrl
+								)}" target="_blank" rel="noopener noreferrer">Abrir</a>`
+							: '<span class="file-missing">Sin archivo</span>';
+
+						return (
+							'<tr>' +
+							`<td>${safeDate}</td>` +
+							`<td><span class="status-pill">${safeStatus}</span></td>` +
+							`<td>${safeType}</td>` +
+							`<td class="amount ${amountClass}">${formatNumber(row.amount)}</td>` +
+							`<td>${safeCurrency}</td>` +
+							`<td>${safeReference}</td>` +
+							`<td>${fileCell}</td>` +
+							'</tr>'
+						);
+					})
+					.join('');
+
+				return sortedRows;
+			};
+
+			const renderSummary = ({ rows, source, playerId }) => {
+				const list = Array.isArray(rows) ? rows : [];
+				const total = list.length;
+				const withFile = list.filter(row => Boolean(row.fileUrl)).length;
+				const withoutFile = total - withFile;
+				const totalAmount = list.reduce((acc, row) => acc + (row.amount || 0), 0);
+
+				totalReceiptsEl.textContent = formatNumber(total);
+				withFileCountEl.textContent = formatNumber(withFile);
+				withoutFileCountEl.textContent = `Sin archivo: ${formatNumber(withoutFile)}`;
+				totalAmountEl.textContent = formatNumber(totalAmount);
+				sourceEl.textContent = `Fuente: ${source}`;
+				playerIdEl.textContent = playerId || '-';
+				lastUpdatedEl.textContent = `Ultima actualizacion: ${formatDate(Date.now())}`;
+				rowsCountEl.textContent = `Filas: ${formatNumber(total)}`;
+
+				const coverage = total
+					? `${formatNumber((withFile / total) * 100)}%`
+					: '0%';
+				fileCoverageEl.textContent = `Cobertura de archivos: ${coverage}`;
+			};
+
+			const updateMetaFromContext = context => {
+				const conversationId = context?.conversation?.id || '-';
+				const contact = context?.contact || context?.conversation?.meta?.sender || {};
+				const contactId = contact?.id || urlParams.get('contactId') || '-';
+				const identifier = contact?.identifier || urlParams.get('identifier') || '-';
+
+				metaEl.textContent =
+					`Conversation #${conversationId} | Contact ${contactId} | Identifier ${identifier}`;
+			};
+
+			const executeReceiptsLoad = async () => {
+				await ensureSessionReady();
+
+				let requestContext = null;
+				try {
+					requestContext = resolveRequestContext(state.context);
+					requestContext = await enrichRequestContextFromAccount(requestContext);
+				} catch (error) {
+					const shouldRetryMissingContext =
+						error?.code === 'MISSING_BACKOFFICE_CONTEXT' && Boolean(sessionHelper);
+
+					if (!shouldRetryMissingContext) {
+						throw error;
+					}
+
+					const refreshResult = await ensureSessionReady({ forceRefresh: true });
+					if (
+						refreshResult?.state !== 'refreshed' &&
+						refreshResult?.state !== 'not_needed'
+					) {
+						throw error;
+					}
+
+					requestContext = resolveRequestContext(state.context);
+					requestContext = await enrichRequestContextFromAccount(requestContext);
+				}
+
+				const globalContactMode = isGlobalContactContext(state.context);
+				let playerId = '';
+
+				if (globalContactMode) {
+					playerId = GLOBAL_CONTACT_ID ? `GLOBAL:${GLOBAL_CONTACT_ID}` : 'GLOBAL';
+				} else {
+					playerId = await resolvePlayerId({
+						context: state.context,
+						requestContext,
+					});
+
+					if (!playerId) {
+						const error = new Error(
+							'No se pudo resolver playerId con el contexto de contacto.'
+						);
+						error.code = 'PLAYER_ID_NOT_FOUND';
+						throw error;
+					}
+				}
+
+				const payload = await loadReceiptRows({
+					playerId,
+					requestContext,
+					isGlobalContact: globalContactMode,
+				});
+
+				return {
+					playerId,
+					payload,
+				};
+			};
+
+			const loadReceiptsData = async () => {
+				if (state.loading) {
+					return;
+				}
+
+				if (!state.context) {
+					setStatus({ title: 'Esperando appContext del chat...', tone: 'warning' });
+					return;
+				}
+
+				const globalContactMode = isGlobalContactContext(state.context);
+				state.loading = true;
+				refreshButtonEl.disabled = true;
+				setStatus({
+					title: globalContactMode
+						? 'Cargando comprobantes globales del tenant...'
+						: 'Cargando comprobantes del jugador...',
+				});
+
+				let finalError = null;
+
+				try {
+					let playerId = '';
+					let payload = null;
+
+					try {
+						const loadResult = await executeReceiptsLoad();
+						playerId = loadResult.playerId;
+						payload = loadResult.payload;
+					} catch (error) {
+						if (!isAuthError(error) || !sessionHelper) {
+							throw error;
+						}
+
+						setStatus({
+							title: 'Sesion expirada. Renovando credenciales y reintentando...',
+							tone: 'warning',
+						});
+
+						const refreshResult = await ensureSessionReady({ forceRefresh: true });
+						if (
+							refreshResult?.state !== 'refreshed' &&
+							refreshResult?.state !== 'not_needed'
+						) {
+							throw error;
+						}
+
+						const retryResult = await executeReceiptsLoad();
+						playerId = retryResult.playerId;
+						payload = retryResult.payload;
+					}
+
+					state.playerId = playerId;
+					state.rows = payload.rows;
+					state.source = payload.source;
+					state.pagination.page = 1;
+
+					const renderedRows = renderRows(payload.rows);
+					renderSummary({
+						rows: renderedRows,
+						source: payload.source,
+						playerId,
+					});
+
+					setStatus({ title: 'Comprobantes cargados correctamente.' });
+				} catch (error) {
+					finalError = error;
+				} finally {
+					if (finalError) {
+						const status = finalError?.status || finalError?.response?.status;
+						const errorMessage =
+							finalError?.code === 'MISSING_BACKOFFICE_CONTEXT'
+								? 'Sesion de Backoffice incompleta. Reautentica en Backoffice y recarga la conversacion.'
+								: isAuthError(finalError)
+									? 'Sesion expirada o sin permisos en Backoffice.'
+									: status
+										? `No se pudieron cargar los comprobantes. (status: ${status})`
+										: finalError?.message ||
+											'No se pudieron cargar los comprobantes del jugador.';
+
+						renderRows([]);
+						renderSummary({ rows: [], source: 'none', playerId: '-' });
+						setStatus({ title: errorMessage, tone: 'error' });
+					}
+
+					state.loading = false;
+					refreshButtonEl.disabled = false;
+				}
+			};
+
+			const requestContext = () => {
+				if (window.parent) {
+					window.parent.postMessage('chatwoot-dashboard-app:fetch-info', '*');
+				}
+			};
+
+			const keepBackofficeSessionFresh = async () => {
+				try {
+					await ensureSessionReady();
+				} catch {
+					// Session refresh failures are handled on demand during data load.
+				}
+			};
+
+			refreshButtonEl.addEventListener('click', () => {
+				loadReceiptsData();
+			});
+
+			prevPageButtonEl.addEventListener('click', () => {
+				if (state.loading || state.pagination.page <= 1) {
+					return;
+				}
+
+				state.pagination.page -= 1;
+				renderRows(state.rows);
+			});
+
+			nextPageButtonEl.addEventListener('click', () => {
+				if (state.loading) {
+					return;
+				}
+
+				const totalRows = Array.isArray(state.rows) ? dedupeRows(state.rows).length : 0;
+				const pageSize = Number(state.pagination.pageSize) || 10;
+				const totalPages = totalRows ? Math.ceil(totalRows / pageSize) : 1;
+
+				if (state.pagination.page >= totalPages) {
+					return;
+				}
+
+				state.pagination.page += 1;
+				renderRows(state.rows);
+			});
+
+			pageSizeSelectEl.addEventListener('change', () => {
+				const nextPageSize = Number(pageSizeSelectEl.value);
+				if (!Number.isFinite(nextPageSize) || nextPageSize <= 0) {
+					pageSizeSelectEl.value = String(state.pagination.pageSize);
+					return;
+				}
+
+				state.pagination.pageSize = nextPageSize;
+				state.pagination.page = 1;
+				renderRows(state.rows);
+			});
+
+			const isJSONValid = value => {
+				if (typeof value !== 'string') {
+					return false;
+				}
+
+				try {
+					JSON.parse(value);
+					return true;
+				} catch {
+					return false;
+				}
+			};
+
+			window.addEventListener('message', function (event) {
+				debugLog('[Comprobantes App] Mensaje recibido:', event);
+
+				let eventData = null;
+				if (typeof event.data === 'string') {
+					if (!isJSONValid(event.data)) {
+						debugLog('[Comprobantes App] Mensaje ignorado (no JSON valido):', event);
+						return;
+					}
+
+					eventData = JSON.parse(event.data);
+				} else if (event.data && typeof event.data === 'object') {
+					eventData = event.data;
+				}
+
+				if (!eventData || typeof eventData !== 'object') {
+					return;
+				}
+
+				if (
+					eventData.event !== 'appContext' &&
+					eventData?.data?.event === 'appContext'
+				) {
+					eventData = eventData.data;
+				}
+
+				debugLog('[Comprobantes App] eventData parseado:', eventData);
+
+				if (!eventData || eventData.event !== 'appContext') {
+					return;
+				}
+
+				const nextContext = eventData.data || {};
+				let contextFingerprint = '';
+				try {
+					contextFingerprint = JSON.stringify(nextContext);
+				} catch {
+					contextFingerprint = '';
+				}
+
+				const now = Date.now();
+				if (
+					contextFingerprint &&
+					contextFingerprint === state.lastContextFingerprint &&
+					now - state.lastContextReceivedAt < 5000
+				) {
+					return;
+				}
+
+				state.lastContextFingerprint = contextFingerprint;
+				state.lastContextReceivedAt = now;
+				state.context = nextContext;
+				updateMetaFromContext(state.context);
+				loadReceiptsData();
+			});
+
+			renderRows([]);
+			renderSummary({ rows: [], source: 'none', playerId: '-' });
+			setStatus({ title: 'Solicitando contexto del chat...' });
+			keepBackofficeSessionFresh();
+			setInterval(keepBackofficeSessionFresh, 60 * 1000);
+			requestContext();
+			setTimeout(requestContext, 350);
+		</script>
+	</body>
+</html>
