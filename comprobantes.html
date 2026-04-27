@@ -339,7 +339,7 @@
 
 				<div class="summary">
 					<article class="kpi">
-						<div class="kpi-label">Comprobantes aprobados</div>
+						<div class="kpi-label">Comprobantes totales</div>
 						<div class="kpi-value" id="totalReceipts">0</div>
 						<div class="kpi-sub" id="rowsCount">Filas: 0</div>
 					</article>
@@ -349,7 +349,7 @@
 						<div class="kpi-sub" id="withoutFileCount">Sin archivo: 0</div>
 					</article>
 					<article class="kpi">
-						<div class="kpi-label">Monto total aprobado</div>
+						<div class="kpi-label">Monto total</div>
 						<div class="kpi-value" id="totalAmount">0</div>
 						<div class="kpi-sub" id="source">Fuente: -</div>
 					</article>
@@ -373,13 +373,13 @@
 					<table>
 						<thead>
 							<tr>
-								<th>Fecha</th>
-								<th>Estado</th>
+								<th>FECHA</th>
+								<th>COMPROBANTE</th>
+								<th>MONTO</th>
+								<th>ESTADO</th>
 								<th>Tipo</th>
-								<th>Monto</th>
 								<th>Moneda</th>
 								<th>Referencia</th>
-								<th>Comprobante</th>
 							</tr>
 						</thead>
 						<tbody id="rows"></tbody>
@@ -406,7 +406,7 @@
 				</div>
 
 				<p class="hint">
-					Este tab muestra unicamente comprobantes con estado approved. La conexion y autenticacion usan la misma logica de sesion/contexto del modulo de cargas y retiros.
+					Este tab muestra comprobantes de todos los estados. La conexion y autenticacion usan la misma logica de sesion/contexto del modulo de cargas y retiros.
 				</p>
 			</section>
 		</main>
@@ -658,15 +658,6 @@
 				}
 
 				return parsed;
-			};
-
-			const isLikelyApprovedStatus = statusValue => {
-				const normalizedStatus = normalizeText(statusValue);
-				if (!normalizedStatus) {
-					return false;
-				}
-
-				return /(^|[^a-z])approved([^a-z]|$)/.test(normalizedStatus);
 			};
 
 			const parseBackofficeSession = () => {
@@ -1886,12 +1877,6 @@
 			const normalizeTransferReceiptRows = ({ receipts, apiHost }) => {
 				return (Array.isArray(receipts) ? receipts : [])
 					.map(receipt => {
-						const statusValue =
-							receipt?.statusText ?? receipt?.status_text ?? receipt?.status;
-						if (!isLikelyApprovedStatus(statusValue)) {
-							return null;
-						}
-
 						const amount = parseMoneyAmount(receipt?.amount);
 						if (amount === null || amount === 0) {
 							return null;
@@ -2111,7 +2096,7 @@
 
 				if (!sortedRows.length) {
 					rowsEl.innerHTML =
-						'<tr><td colspan="7" class="empty">No hay comprobantes aprobados disponibles.</td></tr>';
+						'<tr><td colspan="7" class="empty">No hay comprobantes disponibles.</td></tr>';
 					return sortedRows;
 				}
 
@@ -2133,12 +2118,12 @@
 						return (
 							'<tr>' +
 							`<td>${safeDate}</td>` +
+							`<td>${fileCell}</td>` +
+							`<td class="amount ${amountClass}">${formatNumber(row.amount)}</td>` +
 							`<td><span class="status-pill">${safeStatus}</span></td>` +
 							`<td>${safeType}</td>` +
-							`<td class="amount ${amountClass}">${formatNumber(row.amount)}</td>` +
 							`<td>${safeCurrency}</td>` +
 							`<td>${safeReference}</td>` +
-							`<td>${fileCell}</td>` +
 							'</tr>'
 						);
 					})
