@@ -148,6 +148,41 @@
 				border-color: #9ab8a0;
 			}
 
+			.status-filters {
+				margin: 0 16px 12px;
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				flex-wrap: wrap;
+			}
+
+			.status-filters-label {
+				font-size: 12px;
+				color: var(--muted);
+				font-weight: 600;
+			}
+
+			.status-filter {
+				border: 1px solid #c9d9cc;
+				background: #ffffff;
+				color: var(--text);
+				border-radius: 999px;
+				padding: 6px 12px;
+				cursor: pointer;
+				font-size: 12px;
+				font-weight: 600;
+			}
+
+			.status-filter:hover {
+				border-color: #9ab8a0;
+			}
+
+			.status-filter.is-active {
+				background: var(--info);
+				border-color: var(--info);
+				color: #ffffff;
+			}
+
 			.details {
 				padding: 0 16px 10px;
 				display: flex;
@@ -402,6 +437,19 @@
 					align-items: stretch;
 				}
 
+				.status-filters {
+					margin-left: 12px;
+					margin-right: 12px;
+				}
+
+				.status-filters-label {
+					width: 100%;
+				}
+
+				.status-filter {
+					flex: 1 1 calc(33.33% - 6px);
+				}
+
 				.status button {
 					width: 100%;
 				}
@@ -480,24 +528,14 @@
 
 				<div class="summary">
 					<article class="kpi">
-						<div class="kpi-label">Comprobantes totales</div>
+						<div class="kpi-label">Comprobantes incoming</div>
 						<div class="kpi-value" id="totalReceipts">0</div>
 						<div class="kpi-sub" id="rowsCount">Filas: 0</div>
-					</article>
-					<article class="kpi">
-						<div class="kpi-label">Con archivo</div>
-						<div class="kpi-value good" id="withFileCount">0</div>
-						<div class="kpi-sub" id="withoutFileCount">Sin archivo: 0</div>
 					</article>
 					<article class="kpi">
 						<div class="kpi-label">Monto total</div>
 						<div class="kpi-value" id="totalAmount">0</div>
 						<div class="kpi-sub" id="source">Fuente: -</div>
-					</article>
-					<article class="kpi">
-						<div class="kpi-label">Player ID</div>
-						<div class="kpi-value kpi-value-small" id="playerId">-</div>
-						<div class="kpi-sub" id="lastUpdated">Ultima actualizacion: -</div>
 					</article>
 				</div>
 
@@ -506,8 +544,16 @@
 					<button type="button" id="refreshButton">Actualizar</button>
 				</div>
 
+				<div class="status-filters" id="statusFilters" role="group" aria-label="Filtrar comprobantes por estado">
+					<span class="status-filters-label">Estado:</span>
+					<button type="button" class="status-filter is-active" data-status-filter="approved" aria-pressed="true">Approved</button>
+					<button type="button" class="status-filter" data-status-filter="pending" aria-pressed="false">Pending</button>
+					<button type="button" class="status-filter" data-status-filter="declined" aria-pressed="false">Declined</button>
+				</div>
+
 				<div class="details">
 					<span id="fileCoverage">Cobertura de archivos: -</span>
+					<span id="lastUpdated">Ultima actualizacion: -</span>
 				</div>
 
 				<div class="table-container">
@@ -547,7 +593,7 @@
 				</div>
 
 				<p class="hint">
-					Este tab muestra comprobantes de todos los estados. La conexion y autenticacion usan la misma logica de sesion/contexto del modulo de cargas y retiros.
+					Este tab muestra solo comprobantes incoming y permite filtrar por estado (Approved, Pending, Declined). La conexion y autenticacion usan la misma logica de sesion/contexto del modulo de cargas y retiros.
 				</p>
 			</section>
 		</main>
@@ -637,16 +683,14 @@
 			const rowsEl = document.getElementById('rows');
 			const metaEl = document.getElementById('meta');
 			const totalReceiptsEl = document.getElementById('totalReceipts');
-			const withFileCountEl = document.getElementById('withFileCount');
-			const withoutFileCountEl = document.getElementById('withoutFileCount');
 			const totalAmountEl = document.getElementById('totalAmount');
 			const sourceEl = document.getElementById('source');
-			const playerIdEl = document.getElementById('playerId');
 			const lastUpdatedEl = document.getElementById('lastUpdated');
 			const rowsCountEl = document.getElementById('rowsCount');
 			const fileCoverageEl = document.getElementById('fileCoverage');
 			const statusBoxEl = document.getElementById('statusBox');
 			const statusTitleEl = document.getElementById('statusTitle');
+			const statusFiltersEl = document.getElementById('statusFilters');
 			const refreshButtonEl = document.getElementById('refreshButton');
 			const paginationEl = document.getElementById('pagination');
 			const paginationSummaryEl = document.getElementById('paginationSummary');
@@ -685,6 +729,7 @@
 				playerId: '',
 				rows: [],
 				source: 'none',
+				statusFilter: 'approved',
 				loading: false,
 				lastContextFingerprint: '',
 				lastContextReceivedAt: 0,
@@ -727,6 +772,18 @@
 				String(value || '')
 					.trim()
 					.toLowerCase();
+
+			const STATUS_FILTER_KEYS = ['approved', 'pending', 'declined'];
+			const STATUS_FILTER_ALIASES = {
+				approved: ['approved', 'aprobado'],
+				pending: ['pending', 'pendiente'],
+				declined: ['declined', 'rejected', 'rechazado', 'denied'],
+			};
+
+			const statusFilterFromQuery = normalizeText(urlParams.get('status'));
+			if (STATUS_FILTER_KEYS.includes(statusFilterFromQuery)) {
+				state.statusFilter = statusFilterFromQuery;
+			}
 
 			const normalizeContactId = value => String(value ?? '').trim();
 			const normalizePhone = value => String(value || '').replace(/\D/g, '');
@@ -2085,6 +2142,48 @@
 				}
 			};
 
+			const normalizeStatusToken = value =>
+				normalizeText(value).replace(/[\s_\-]+/g, '');
+
+			const matchesStatusFilter = ({ statusValue, filterKey }) => {
+				if (!STATUS_FILTER_KEYS.includes(filterKey)) {
+					return false;
+				}
+
+				const normalizedStatus = normalizeStatusToken(statusValue);
+				if (!normalizedStatus) {
+					return false;
+				}
+
+				const aliases = STATUS_FILTER_ALIASES[filterKey] || [filterKey];
+				return aliases.some(alias => {
+					const normalizedAlias = normalizeStatusToken(alias);
+					return (
+						normalizedStatus === normalizedAlias ||
+						normalizedStatus.includes(normalizedAlias)
+					);
+				});
+			};
+
+			const syncStatusFilterButtons = () => {
+				statusFiltersEl
+					.querySelectorAll('[data-status-filter]')
+					.forEach(buttonEl => {
+						const buttonFilter = buttonEl.getAttribute('data-status-filter') || '';
+						const isActive = buttonFilter === state.statusFilter;
+						buttonEl.classList.toggle('is-active', isActive);
+						buttonEl.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+					});
+			};
+
+			const getStatusFilteredRows = rows =>
+				dedupeRows(rows).filter(row =>
+					matchesStatusFilter({
+						statusValue: row?.status,
+						filterKey: state.statusFilter,
+					})
+				);
+
 			const normalizeTransferReceiptRows = ({ receipts, apiHost }) => {
 				return (Array.isArray(receipts) ? receipts : [])
 					.map(receipt => {
@@ -2094,7 +2193,7 @@
 						}
 
 						const direction = resolveTransferReceiptDirection(receipt);
-						if (!direction) {
+						if (!direction || direction !== 'incoming') {
 							return null;
 						}
 
@@ -2115,7 +2214,7 @@
 						return {
 							timestamp,
 							dateLabel: formatDate(timestamp),
-							type: direction === 'incoming' ? 'Incoming' : 'Outgoing',
+							type: 'Incoming',
 							receiptId: String(receipt?.id || '').trim(),
 							status:
 								receipt?.statusText || receipt?.status_text || receipt?.status || '-',
@@ -2303,7 +2402,9 @@
 			};
 
 			const renderRows = rows => {
-				const sortedRows = [...dedupeRows(rows)].sort((left, right) => {
+				const filteredRows = getStatusFilteredRows(rows);
+
+				const sortedRows = [...filteredRows].sort((left, right) => {
 					const leftTimestamp =
 						typeof left.timestamp === 'number' ? left.timestamp : -Infinity;
 					const rightTimestamp =
@@ -2335,7 +2436,7 @@
 
 				if (!sortedRows.length) {
 					rowsEl.innerHTML =
-						'<tr><td colspan="7" class="empty">No hay comprobantes disponibles.</td></tr>';
+						'<tr><td colspan="7" class="empty">No hay comprobantes incoming para el estado seleccionado.</td></tr>';
 					return sortedRows;
 				}
 
@@ -2371,19 +2472,15 @@
 				return sortedRows;
 			};
 
-			const renderSummary = ({ rows, source, playerId }) => {
+			const renderSummary = ({ rows, source }) => {
 				const list = Array.isArray(rows) ? rows : [];
 				const total = list.length;
 				const withFile = list.filter(row => Boolean(row.fileUrl)).length;
-				const withoutFile = total - withFile;
 				const totalAmount = list.reduce((acc, row) => acc + (row.amount || 0), 0);
 
 				totalReceiptsEl.textContent = formatNumber(total);
-				withFileCountEl.textContent = formatNumber(withFile);
-				withoutFileCountEl.textContent = `Sin archivo: ${formatNumber(withoutFile)}`;
 				totalAmountEl.textContent = formatNumber(totalAmount);
-				sourceEl.textContent = `Fuente: ${source}`;
-				playerIdEl.textContent = playerId || '-';
+				sourceEl.textContent = `Fuente: ${source} | Estado: ${state.statusFilter}`;
 				lastUpdatedEl.textContent = `Ultima actualizacion: ${formatDate(Date.now())}`;
 				rowsCountEl.textContent = `Filas: ${formatNumber(total)}`;
 
@@ -2523,7 +2620,6 @@
 					renderSummary({
 						rows: renderedRows,
 						source: payload.source,
-						playerId,
 					});
 
 					setStatus({ title: 'Comprobantes cargados correctamente.' });
@@ -2543,7 +2639,7 @@
 											'No se pudieron cargar los comprobantes del jugador.';
 
 						renderRows([]);
-						renderSummary({ rows: [], source: 'none', playerId: '-' });
+						renderSummary({ rows: [], source: 'none' });
 						setStatus({ title: errorMessage, tone: 'error' });
 					}
 
@@ -2568,6 +2664,32 @@
 
 			refreshButtonEl.addEventListener('click', () => {
 				loadReceiptsData();
+			});
+
+			statusFiltersEl.addEventListener('click', event => {
+				const targetButton = event.target.closest('[data-status-filter]');
+				if (!targetButton) {
+					return;
+				}
+
+				const nextFilter =
+					normalizeText(targetButton.getAttribute('data-status-filter'));
+				if (!STATUS_FILTER_KEYS.includes(nextFilter)) {
+					return;
+				}
+
+				if (state.statusFilter === nextFilter) {
+					return;
+				}
+
+				state.statusFilter = nextFilter;
+				syncStatusFilterButtons();
+				state.pagination.page = 1;
+				const renderedRows = renderRows(state.rows);
+				renderSummary({
+					rows: renderedRows,
+					source: state.source,
+				});
 			});
 
 			rowsEl.addEventListener('click', event => {
@@ -2611,7 +2733,7 @@
 					return;
 				}
 
-				const totalRows = Array.isArray(state.rows) ? dedupeRows(state.rows).length : 0;
+				const totalRows = getStatusFilteredRows(state.rows).length;
 				const pageSize = Number(state.pagination.pageSize) || 10;
 				const totalPages = totalRows ? Math.ceil(totalRows / pageSize) : 1;
 
@@ -2704,8 +2826,9 @@
 				loadReceiptsData();
 			});
 
+			syncStatusFilterButtons();
 			renderRows([]);
-			renderSummary({ rows: [], source: 'none', playerId: '-' });
+			renderSummary({ rows: [], source: 'none' });
 			setStatus({ title: 'Solicitando contexto del chat...' });
 			keepBackofficeSessionFresh();
 			setInterval(keepBackofficeSessionFresh, 60 * 1000);
