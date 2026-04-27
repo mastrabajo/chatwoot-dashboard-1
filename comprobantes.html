@@ -27,6 +27,10 @@
 				color: var(--text);
 			}
 
+			body.modal-open {
+				overflow: hidden;
+			}
+
 			.wrapper {
 				max-width: 1080px;
 				margin: 16px auto;
@@ -193,14 +197,28 @@
 			}
 
 			.file-link {
-				display: inline-block;
+				display: inline-flex;
+				align-items: center;
 				color: var(--info);
 				text-decoration: none;
 				font-weight: 600;
+				background: none;
+				border: 0;
+				padding: 0;
+				margin: 0;
+				cursor: pointer;
+				font: inherit;
+				line-height: 1.2;
 			}
 
 			.file-link:hover {
 				text-decoration: underline;
+			}
+
+			.file-link:focus-visible {
+				outline: 2px solid rgba(20, 88, 216, 0.45);
+				outline-offset: 2px;
+				border-radius: 4px;
 			}
 
 			.file-missing {
@@ -211,6 +229,100 @@
 			.empty {
 				color: var(--muted);
 				font-style: italic;
+			}
+
+			.receipt-modal {
+				position: fixed;
+				inset: 0;
+				z-index: 9999;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				padding: 12px;
+			}
+
+			.receipt-modal[hidden] {
+				display: none;
+			}
+
+			.receipt-modal__backdrop {
+				position: absolute;
+				inset: 0;
+				background: rgba(10, 26, 15, 0.58);
+			}
+
+			.receipt-modal__dialog {
+				position: relative;
+				z-index: 1;
+				width: min(1100px, calc(100vw - 24px));
+				height: min(90vh, 760px);
+				background: #ffffff;
+				border: 1px solid #d8e8dd;
+				border-radius: 14px;
+				overflow: hidden;
+				box-shadow: 0 20px 46px rgba(9, 30, 17, 0.28);
+				display: flex;
+				flex-direction: column;
+			}
+
+			.receipt-modal__header {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				gap: 10px;
+				padding: 12px 14px;
+				border-bottom: 1px solid #e3efe7;
+				background: #f7fbf8;
+			}
+
+			.receipt-modal__title {
+				margin: 0;
+				font-size: 14px;
+				font-weight: 700;
+				max-width: 60%;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.receipt-modal__actions {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+			}
+
+			.receipt-modal__external-link,
+			.receipt-modal__close {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				text-decoration: none;
+				border: 1px solid #c9d9cc;
+				border-radius: 8px;
+				background: #ffffff;
+				color: var(--text);
+				padding: 6px 10px;
+				font-size: 12px;
+				font-weight: 600;
+				cursor: pointer;
+			}
+
+			.receipt-modal__external-link:hover,
+			.receipt-modal__close:hover {
+				border-color: #9ab8a0;
+			}
+
+			.receipt-modal__content {
+				position: relative;
+				flex: 1;
+				background: #f3f7f4;
+			}
+
+			.receipt-modal__frame {
+				width: 100%;
+				height: 100%;
+				border: 0;
+				background: #ffffff;
 			}
 
 			.pagination {
@@ -326,6 +438,35 @@
 					width: 100%;
 					text-align: center;
 				}
+
+				.receipt-modal {
+					padding: 8px;
+				}
+
+				.receipt-modal__dialog {
+					width: 100%;
+					height: calc(100vh - 16px);
+					border-radius: 12px;
+				}
+
+				.receipt-modal__header {
+					padding: 10px 12px;
+					flex-direction: column;
+					align-items: stretch;
+				}
+
+				.receipt-modal__title {
+					max-width: none;
+				}
+
+				.receipt-modal__actions {
+					width: 100%;
+				}
+
+				.receipt-modal__external-link,
+				.receipt-modal__close {
+					flex: 1;
+				}
 			}
 		</style>
 	</head>
@@ -411,6 +552,47 @@
 			</section>
 		</main>
 
+		<div class="receipt-modal" id="receiptModal" hidden>
+			<div class="receipt-modal__backdrop" data-modal-close="true"></div>
+			<section
+				class="receipt-modal__dialog"
+				role="dialog"
+				aria-modal="true"
+				aria-labelledby="receiptModalTitle"
+			>
+				<header class="receipt-modal__header">
+					<h2 class="receipt-modal__title" id="receiptModalTitle">Comprobante</h2>
+					<div class="receipt-modal__actions">
+						<a
+							id="receiptModalExternalLink"
+							class="receipt-modal__external-link"
+							href="#"
+							target="_blank"
+							rel="noopener noreferrer"
+							>Abrir en nueva pestana</a
+						>
+						<button
+							type="button"
+							class="receipt-modal__close"
+							id="closeReceiptModalButton"
+							aria-label="Cerrar modal"
+						>
+							Cerrar
+						</button>
+					</div>
+				</header>
+				<div class="receipt-modal__content">
+					<iframe
+						id="receiptModalFrame"
+						class="receipt-modal__frame"
+						title="Vista previa del comprobante"
+						loading="lazy"
+						referrerpolicy="no-referrer"
+					></iframe>
+				</div>
+			</section>
+		</div>
+
 		<script>
 			const BACKOFFICE_SESSION_STORAGE_KEY = 'cw_frontend_backoffice_session';
 			const DEFAULT_BACKOFFICE_API_HOST = 'https://api-bko.jugaygana.site';
@@ -472,6 +654,15 @@
 			const prevPageButtonEl = document.getElementById('prevPageButton');
 			const nextPageButtonEl = document.getElementById('nextPageButton');
 			const pageInfoEl = document.getElementById('pageInfo');
+			const receiptModalEl = document.getElementById('receiptModal');
+			const closeReceiptModalButtonEl = document.getElementById(
+				'closeReceiptModalButton'
+			);
+			const receiptModalFrameEl = document.getElementById('receiptModalFrame');
+			const receiptModalTitleEl = document.getElementById('receiptModalTitle');
+			const receiptModalExternalLinkEl = document.getElementById(
+				'receiptModalExternalLink'
+			);
 
 			const urlParams = new URLSearchParams(window.location.search);
 			const GLOBAL_CONTACT_ID = String(
@@ -1874,6 +2065,26 @@
 				}
 			};
 
+			const sanitizeReceiptUrl = value => {
+				const normalizedValue = String(value || '').trim();
+				if (!normalizedValue) {
+					return '';
+				}
+
+				try {
+					const parsedUrl = new URL(normalizedValue, window.location.origin);
+					const protocol = parsedUrl.protocol.toLowerCase();
+
+					if (protocol !== 'http:' && protocol !== 'https:') {
+						return '';
+					}
+
+					return parsedUrl.toString();
+				} catch {
+					return '';
+				}
+			};
+
 			const normalizeTransferReceiptRows = ({ receipts, apiHost }) => {
 				return (Array.isArray(receipts) ? receipts : [])
 					.map(receipt => {
@@ -1897,7 +2108,9 @@
 								receipt?.updated_at
 						);
 
-						const fileUrl = resolveReceiptFileUrl({ receipt, apiHost });
+						const fileUrl = sanitizeReceiptUrl(
+							resolveReceiptFileUrl({ receipt, apiHost })
+						);
 
 						return {
 							timestamp,
@@ -2029,6 +2242,32 @@
 				}
 			};
 
+			const closeReceiptModal = () => {
+				if (receiptModalEl.hidden) {
+					return;
+				}
+
+				receiptModalEl.hidden = true;
+				receiptModalFrameEl.src = 'about:blank';
+				receiptModalExternalLinkEl.href = '#';
+				document.body.classList.remove('modal-open');
+			};
+
+			const openReceiptModal = ({ fileUrl, fileLabel }) => {
+				const safeUrl = sanitizeReceiptUrl(fileUrl);
+				if (!safeUrl) {
+					return;
+				}
+
+				const safeFileLabel = String(fileLabel || '').trim() || 'Comprobante';
+				receiptModalTitleEl.textContent = safeFileLabel;
+				receiptModalExternalLinkEl.href = safeUrl;
+				receiptModalFrameEl.src = safeUrl;
+				receiptModalEl.hidden = false;
+				document.body.classList.add('modal-open');
+				closeReceiptModalButtonEl.focus();
+			};
+
 			const updatePaginationUI = ({
 				totalRows,
 				totalPages,
@@ -2108,11 +2347,11 @@
 						const safeType = escapeHTML(row.type);
 						const safeCurrency = escapeHTML(row.currency);
 						const safeReference = escapeHTML(row.reference);
+						const safeFileUrl = escapeHTML(row.fileUrl);
+						const safeFileLabel = escapeHTML(row.fileLabel || 'Comprobante');
 
 						const fileCell = row.fileUrl
-							? `<a class="file-link" href="${escapeHTML(
-									row.fileUrl
-								)}" target="_blank" rel="noopener noreferrer">Abrir</a>`
+							? `<button type="button" class="file-link" data-receipt-open="1" data-file-url="${safeFileUrl}" data-file-label="${safeFileLabel}">Abrir</button>`
 							: '<span class="file-missing">Sin archivo</span>';
 
 						return (
@@ -2329,6 +2568,33 @@
 
 			refreshButtonEl.addEventListener('click', () => {
 				loadReceiptsData();
+			});
+
+			rowsEl.addEventListener('click', event => {
+				const trigger = event.target.closest('[data-receipt-open="1"]');
+				if (!trigger) {
+					return;
+				}
+
+				event.preventDefault();
+				openReceiptModal({
+					fileUrl: trigger.getAttribute('data-file-url') || '',
+					fileLabel: trigger.getAttribute('data-file-label') || 'Comprobante',
+				});
+			});
+
+			closeReceiptModalButtonEl.addEventListener('click', closeReceiptModal);
+
+			receiptModalEl.addEventListener('click', event => {
+				if (event.target?.matches('[data-modal-close="true"]')) {
+					closeReceiptModal();
+				}
+			});
+
+			window.addEventListener('keydown', event => {
+				if (event.key === 'Escape' && !receiptModalEl.hidden) {
+					closeReceiptModal();
+				}
 			});
 
 			prevPageButtonEl.addEventListener('click', () => {
