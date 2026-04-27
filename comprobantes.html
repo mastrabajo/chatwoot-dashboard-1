@@ -800,6 +800,26 @@
 				}
 			};
 
+			const isMobileViewerContext = () => {
+				const byViewport = window.matchMedia('(max-width: 720px)').matches;
+				const userAgent = String(navigator.userAgent || '');
+				const byUserAgent = /android|iphone|ipad|ipod|mobile/i.test(userAgent);
+				return byViewport || byUserAgent;
+			};
+
+			const openReceiptOutsideModal = safeUrl => {
+				if (!safeUrl) {
+					return;
+				}
+
+				const popup = window.open(safeUrl, '_blank', 'noopener,noreferrer');
+				if (popup) {
+					return;
+				}
+
+				window.location.href = safeUrl;
+			};
+
 			const escapeHTML = value =>
 				String(value ?? '')
 					.replace(/&/g, '&amp;')
@@ -2515,6 +2535,13 @@
 
 			const openReceiptModal = ({ fileUrl, fileLabel }) => {
 				const safeUrl = sanitizeReceiptUrl(fileUrl);
+
+				if (isMobileViewerContext()) {
+					closeReceiptModal();
+					openReceiptOutsideModal(safeUrl);
+					return;
+				}
+
 				if (!safeUrl) {
 					receiptModalTitleEl.textContent = 'Comprobante';
 					receiptModalExternalLinkEl.href = '#';
