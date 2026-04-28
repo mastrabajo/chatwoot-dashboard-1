@@ -2588,6 +2588,8 @@
 				requestContext,
 				unfiltered = false,
 			}) => {
+				const RECEIPTS_PAGE_SIZE = 1000;
+				const RECEIPTS_MAX_PAGES = 1000;
 				const normalizedPlayerId = String(playerId || '').trim();
 				const shouldFilterByPlayer =
 					!unfiltered && UUID_PATTERN.test(normalizedPlayerId);
@@ -2606,11 +2608,14 @@
 
 				const allReceipts = [];
 				const seenReceiptKeys = new Set();
-				const maxPages = 200;
 				let currentPage = 1;
-				let nextPageSize = 100;
+				let nextPageSize = RECEIPTS_PAGE_SIZE;
 
-				for (let visitedPages = 0; visitedPages < maxPages; visitedPages += 1) {
+				for (
+					let visitedPages = 0;
+					visitedPages < RECEIPTS_MAX_PAGES;
+					visitedPages += 1
+				) {
 					const responsePayload = await fetchJSON({
 						url: endpointUrl,
 						headers: requestContext.headers,
@@ -2618,7 +2623,11 @@
 							...baseParams,
 							page: currentPage,
 							pageSize: nextPageSize,
+							page_size: nextPageSize,
 							limit: nextPageSize,
+							perPage: nextPageSize,
+							per_page: nextPageSize,
+							size: nextPageSize,
 						},
 					});
 
@@ -2651,13 +2660,11 @@
 					const reachedKnownLastPage =
 						paginationState.totalPages !== null &&
 						resolvedPage >= paginationState.totalPages;
-					const isShortPage = pageRows.length > 0 && pageRows.length < resolvedPageSize;
 
 					if (
 						pageRows.length === 0 ||
 						newUniqueRows === 0 ||
-						reachedKnownLastPage ||
-						(!paginationState.hasNext && isShortPage)
+						reachedKnownLastPage
 					) {
 						break;
 					}
