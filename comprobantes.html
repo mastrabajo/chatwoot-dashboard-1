@@ -183,6 +183,44 @@
 				color: #ffffff;
 			}
 
+			.date-filters {
+				display: inline-flex;
+				align-items: center;
+				gap: 8px;
+				flex-wrap: wrap;
+				margin-left: 8px;
+			}
+
+			.date-filter-label {
+				font-size: 12px;
+				color: var(--muted);
+				font-weight: 600;
+			}
+
+			.date-filter-input {
+				border: 1px solid #c9d9cc;
+				background: #ffffff;
+				color: var(--text);
+				border-radius: 8px;
+				padding: 6px 10px;
+				font-size: 12px;
+			}
+
+			.date-filter-clear {
+				border: 1px solid #c9d9cc;
+				background: #ffffff;
+				color: var(--text);
+				border-radius: 8px;
+				padding: 6px 10px;
+				cursor: pointer;
+				font-size: 12px;
+				font-weight: 600;
+			}
+
+			.date-filter-clear:hover {
+				border-color: #9ab8a0;
+			}
+
 			.details {
 				padding: 0 16px 10px;
 				display: flex;
@@ -571,6 +609,12 @@
 					<button type="button" class="status-filter" data-status-filter="pending" aria-pressed="false">Pending</button>
 					<button type="button" class="status-filter" data-status-filter="declined" aria-pressed="false">Declined</button>
 					<button type="button" class="status-filter" data-status-filter="duplicated" aria-pressed="false">Duplicated</button>
+					<div class="date-filters" role="group" aria-label="Filtrar comprobantes por fecha">
+						<span class="date-filter-label">Fecha:</span>
+						<input type="date" id="dateFromInput" class="date-filter-input" aria-label="Fecha desde" />
+						<input type="date" id="dateToInput" class="date-filter-input" aria-label="Fecha hasta" />
+						<button type="button" id="clearDateFilterButton" class="date-filter-clear">Limpiar</button>
+					</div>
 				</div>
 
 				<div class="details">
@@ -729,6 +773,11 @@
 			const statusTitleEl = document.getElementById('statusTitle');
 			const statusFiltersEl = document.getElementById('statusFilters');
 			const refreshButtonEl = document.getElementById('refreshButton');
+			const dateFromInputEl = document.getElementById('dateFromInput');
+			const dateToInputEl = document.getElementById('dateToInput');
+			const clearDateFilterButtonEl = document.getElementById(
+				'clearDateFilterButton'
+			);
 			const paginationEl = document.getElementById('pagination');
 			const paginationSummaryEl = document.getElementById('paginationSummary');
 			const pageSizeSelectEl = document.getElementById('pageSizeSelect');
@@ -780,6 +829,10 @@
 				pagination: {
 					page: 1,
 					pageSize: 10,
+				},
+				dateFilter: {
+					from: '',
+					to: '',
 				},
 			};
 
@@ -2490,6 +2543,52 @@
 					})
 				);
 
+			const parseDateFilterBoundary = ({ value, endOfDay = false }) => {
+				const normalizedValue = String(value || '').trim();
+				if (!normalizedValue) {
+					return null;
+				}
+
+				const suffix = endOfDay ? 'T23:59:59.999' : 'T00:00:00.000';
+				const parsed = Date.parse(`${normalizedValue}${suffix}`);
+				return Number.isNaN(parsed) ? null : parsed;
+			};
+
+			const matchesDateFilter = row => {
+				const fromTimestamp = parseDateFilterBoundary({
+					value: state.dateFilter.from,
+				});
+				const toTimestamp = parseDateFilterBoundary({
+					value: state.dateFilter.to,
+					endOfDay: true,
+				});
+				const rowTimestamp =
+					typeof row?.timestamp === 'number' && Number.isFinite(row.timestamp)
+						? row.timestamp
+						: null;
+
+				if (fromTimestamp === null && toTimestamp === null) {
+					return true;
+				}
+
+				if (rowTimestamp === null) {
+					return false;
+				}
+
+				if (fromTimestamp !== null && rowTimestamp < fromTimestamp) {
+					return false;
+				}
+
+				if (toTimestamp !== null && rowTimestamp > toTimestamp) {
+					return false;
+				}
+
+				return true;
+			};
+
+			const getFilteredRows = rows =>
+				getStatusFilteredRows(rows).filter(matchesDateFilter);
+
 			const normalizeTransferReceiptRows = ({ receipts, apiHost }) => {
 				return (Array.isArray(receipts) ? receipts : [])
 					.map(receipt => {
@@ -2796,7 +2895,7 @@
 			};
 
 			const renderRows = rows => {
-				const filteredRows = getStatusFilteredRows(rows);
+				const filteredRows = getFilteredRows(rows);
 
 				const sortedRows = [...filteredRows].sort((left, right) => {
 					const leftTimestamp =
@@ -3190,7 +3289,7 @@
 					return;
 				}
 
-				const totalRows = getStatusFilteredRows(state.rows).length;
+				const totalRows = getFilteredRows(state.rows).length;
 				const pageSize = Number(state.pagination.pageSize) || 10;
 				const totalPages = totalRows ? Math.ceil(totalRows / pageSize) : 1;
 
@@ -3212,6 +3311,47 @@
 				state.pagination.pageSize = nextPageSize;
 				state.pagination.page = 1;
 				renderRows(state.rows);
+			});
+
+			const applyDateFilter = () => {
+				state.dateFilter.from = String(dateFromInputEl.value || '').trim();
+				state.dateFilter.to = String(dateToInputEl.value || '').trim();
+
+				if (
+					state.dateFilter.from &&
+					state.dateFilter.to &&
+					state.dateFilter.from > state.dateFilter.to
+				) {
+					state.dateFilter.to = state.dateFilter.from;
+					dateToInputEl.value = state.dateFilter.to;
+				}
+
+				state.pagination.page = 1;
+				const renderedRows = renderRows(state.rows);
+				renderSummary({
+					rows: renderedRows,
+					source: state.source,
+				});
+			};
+
+			dateFromInputEl.addEventListener('change', applyDateFilter);
+			dateToInputEl.addEventListener('change', applyDateFilter);
+
+			clearDateFilterButtonEl.addEventListener('click', () => {
+				if (!state.dateFilter.from && !state.dateFilter.to) {
+					return;
+				}
+
+				dateFromInputEl.value = '';
+				dateToInputEl.value = '';
+				state.dateFilter.from = '';
+				state.dateFilter.to = '';
+				state.pagination.page = 1;
+				const renderedRows = renderRows(state.rows);
+				renderSummary({
+					rows: renderedRows,
+					source: state.source,
+				});
 			});
 
 			const isJSONValid = value => {
