@@ -4,6 +4,10 @@
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>Visor de Comprobantes</title>
+		<link
+			rel="stylesheet"
+			href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css"
+		/>
 		<style>
 			:root {
 				--bg: #f7faf7;
@@ -197,33 +201,42 @@
 				font-weight: 600;
 			}
 
-			.date-filter-select {
+			.date-range-input {
 				border: 1px solid #c9d9cc;
 				background: #ffffff;
 				color: var(--text);
 				border-radius: 8px;
 				padding: 6px 10px;
 				font-size: 12px;
+				min-width: 190px;
 			}
 
-			.date-filter-custom {
-				display: inline-flex;
-				align-items: center;
-				gap: 8px;
-				flex-wrap: wrap;
-			}
-
-			.date-filter-custom[hidden] {
-				display: none;
-			}
-
-			.date-filter-input {
+			.date-filter-clear {
 				border: 1px solid #c9d9cc;
 				background: #ffffff;
 				color: var(--text);
 				border-radius: 8px;
 				padding: 6px 10px;
 				font-size: 12px;
+				cursor: pointer;
+			}
+
+			.date-filter-clear:hover {
+				border-color: #9ab8a0;
+			}
+
+			.flatpickr-calendar {
+				font-size: 12px;
+			}
+
+			.flatpickr-day.startRange,
+			.flatpickr-day.endRange,
+			.flatpickr-day.startRange:hover,
+			.flatpickr-day.endRange:hover,
+			.flatpickr-day.selected,
+			.flatpickr-day.selected:hover {
+				background: var(--info);
+				border-color: var(--info);
 			}
 
 			.details {
@@ -519,17 +532,13 @@
 					margin-left: 0;
 				}
 
-				.date-filter-select {
+				.date-range-input {
 					flex: 1 1 100%;
-				}
-
-				.date-filter-custom {
-					width: 100%;
-				}
-
-				.date-filter-input {
-					flex: 1 1 calc(50% - 4px);
 					min-width: 0;
+				}
+
+				.date-filter-clear {
+					width: 100%;
 				}
 
 				.status button {
@@ -632,22 +641,24 @@
 					<button type="button" class="status-filter" data-status-filter="pending" aria-pressed="false">Pending</button>
 					<button type="button" class="status-filter" data-status-filter="declined" aria-pressed="false">Declined</button>
 					<button type="button" class="status-filter" data-status-filter="duplicated" aria-pressed="false">Duplicated</button>
-					<div class="date-filters" role="group" aria-label="Filtrar comprobantes por fecha">
-						<span class="date-filter-label">Periodo:</span>
-						<select id="datePresetSelect" class="date-filter-select" aria-label="Periodo de fecha">
-							<option value="all" selected>Todo</option>
-							<option value="today">Hoy</option>
-							<option value="yesterday">Ayer</option>
-							<option value="last_7_days">Ultimos 7 dias</option>
-							<option value="last_30_days">Ultimos 30 dias</option>
-							<option value="this_month">Este mes</option>
-							<option value="previous_month">Mes anterior</option>
-							<option value="custom">Personalizado</option>
-						</select>
-						<div class="date-filter-custom" id="dateFilterCustom" hidden>
-							<input type="date" id="dateFromInput" class="date-filter-input" aria-label="Fecha desde" />
-							<input type="date" id="dateToInput" class="date-filter-input" aria-label="Fecha hasta" />
-						</div>
+					<div class="date-filters" role="group" aria-label="Filtrar comprobantes por rango de fecha">
+						<span class="date-filter-label">Fecha:</span>
+						<input
+							type="text"
+							id="dateRangeInput"
+							class="date-range-input"
+							aria-label="Seleccionar rango de fechas"
+							placeholder="Seleccionar rango"
+							autocomplete="off"
+						/>
+						<button
+							type="button"
+							id="clearDateRangeButton"
+							class="date-filter-clear"
+							aria-label="Limpiar rango de fechas"
+						>
+							Limpiar
+						</button>
 					</div>
 				</div>
 
@@ -693,7 +704,7 @@
 				</div>
 
 				<p class="hint">
-					Este tab muestra solo comprobantes incoming y permite filtrar por estado y periodo de fecha. La conexion y autenticacion usan la misma logica de sesion/contexto del modulo de cargas y retiros.
+					Este tab muestra solo comprobantes incoming y permite filtrar por estado y rango de fechas. La conexion y autenticacion usan la misma logica de sesion/contexto del modulo de cargas y retiros.
 				</p>
 			</section>
 		</main>
@@ -754,6 +765,8 @@
 			</section>
 		</div>
 
+		<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+		<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js"></script>
 		<script>
 			const BACKOFFICE_SESSION_STORAGE_KEY = 'cw_frontend_backoffice_session';
 			const DEFAULT_BACKOFFICE_API_HOST = 'https://api-bko.jugaygana.site';
@@ -807,10 +820,10 @@
 			const statusTitleEl = document.getElementById('statusTitle');
 			const statusFiltersEl = document.getElementById('statusFilters');
 			const refreshButtonEl = document.getElementById('refreshButton');
-			const datePresetSelectEl = document.getElementById('datePresetSelect');
-			const dateFilterCustomEl = document.getElementById('dateFilterCustom');
-			const dateFromInputEl = document.getElementById('dateFromInput');
-			const dateToInputEl = document.getElementById('dateToInput');
+			const dateRangeInputEl = document.getElementById('dateRangeInput');
+			const clearDateRangeButtonEl = document.getElementById(
+				'clearDateRangeButton'
+			);
 			const paginationEl = document.getElementById('pagination');
 			const paginationSummaryEl = document.getElementById('paginationSummary');
 			const pageSizeSelectEl = document.getElementById('pageSizeSelect');
@@ -864,7 +877,6 @@
 					pageSize: 10,
 				},
 				dateFilter: {
-					preset: 'all',
 					from: '',
 					to: '',
 				},
@@ -931,26 +943,6 @@
 				declined: ['declined', 'rejected', 'rechazado', 'denied'],
 				duplicated: ['duplicated', 'duplicate', 'duplicado', 'duplica'],
 			};
-			const DATE_FILTER_PRESET_KEYS = [
-				'all',
-				'today',
-				'yesterday',
-				'last_7_days',
-				'last_30_days',
-				'this_month',
-				'previous_month',
-				'custom',
-			];
-			const DATE_FILTER_PRESET_LABELS = {
-				all: 'Todo',
-				today: 'Hoy',
-				yesterday: 'Ayer',
-				last_7_days: 'Ultimos 7 dias',
-				last_30_days: 'Ultimos 30 dias',
-				this_month: 'Este mes',
-				previous_month: 'Mes anterior',
-				custom: 'Personalizado',
-			};
 			const IMAGE_EXTENSIONS = new Set([
 				'png',
 				'jpg',
@@ -969,14 +961,21 @@
 				state.statusFilter = statusFilterFromQuery;
 			}
 
-			const datePresetFromQuery = normalizeText(
-				urlParams.get('datePreset') || urlParams.get('period')
-			).replace(/[\s\-]+/g, '_');
-			if (DATE_FILTER_PRESET_KEYS.includes(datePresetFromQuery)) {
-				state.dateFilter.preset = datePresetFromQuery;
+			state.dateFilter.from = String(
+				urlParams.get('dateFrom') || urlParams.get('from') || ''
+			).trim();
+			state.dateFilter.to = String(
+				urlParams.get('dateTo') || urlParams.get('to') || ''
+			).trim();
+			if (
+				state.dateFilter.from &&
+				state.dateFilter.to &&
+				state.dateFilter.from > state.dateFilter.to
+			) {
+				const tmpDate = state.dateFilter.from;
+				state.dateFilter.from = state.dateFilter.to;
+				state.dateFilter.to = tmpDate;
 			}
-			state.dateFilter.from = String(urlParams.get('dateFrom') || '').trim();
-			state.dateFilter.to = String(urlParams.get('dateTo') || '').trim();
 
 			const normalizeContactId = value => String(value ?? '').trim();
 			const normalizePhone = value => String(value || '').replace(/\D/g, '');
@@ -2624,16 +2623,6 @@
 					999
 				).getTime();
 
-			const addDays = (date, amount) => {
-				const nextDate = new Date(
-					date.getFullYear(),
-					date.getMonth(),
-					date.getDate()
-				);
-				nextDate.setDate(nextDate.getDate() + amount);
-				return nextDate;
-			};
-
 			const parseDateInputToDate = value => {
 				const normalizedValue = String(value || '').trim();
 				const match = normalizedValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -2657,78 +2646,30 @@
 				return parsedDate;
 			};
 
+			const formatDateInputValue = date => {
+				if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+					return '';
+				}
+
+				const year = date.getFullYear();
+				const month = String(date.getMonth() + 1).padStart(2, '0');
+				const day = String(date.getDate()).padStart(2, '0');
+				return `${year}-${month}-${day}`;
+			};
+
 			const resolveDateFilterRange = () => {
-				const preset = state.dateFilter.preset;
-				const today = new Date();
-
-				if (preset === 'all') {
-					return { from: null, to: null };
-				}
-
-				if (preset === 'today') {
-					return {
-						from: toDayStartTimestamp(today),
-						to: toDayEndTimestamp(today),
-					};
-				}
-
-				if (preset === 'yesterday') {
-					const yesterday = addDays(today, -1);
-					return {
-						from: toDayStartTimestamp(yesterday),
-						to: toDayEndTimestamp(yesterday),
-					};
-				}
-
-				if (preset === 'last_7_days') {
-					const startDate = addDays(today, -6);
-					return {
-						from: toDayStartTimestamp(startDate),
-						to: toDayEndTimestamp(today),
-					};
-				}
-
-				if (preset === 'last_30_days') {
-					const startDate = addDays(today, -29);
-					return {
-						from: toDayStartTimestamp(startDate),
-						to: toDayEndTimestamp(today),
-					};
-				}
-
-				if (preset === 'this_month') {
-					const startDate = new Date(today.getFullYear(), today.getMonth(), 1);
-					return {
-						from: toDayStartTimestamp(startDate),
-						to: toDayEndTimestamp(today),
-					};
-				}
-
-				if (preset === 'previous_month') {
-					const firstCurrentMonth = new Date(
-						today.getFullYear(),
-						today.getMonth(),
-						1
-					);
-					const lastPreviousMonth = addDays(firstCurrentMonth, -1);
-					const firstPreviousMonth = new Date(
-						lastPreviousMonth.getFullYear(),
-						lastPreviousMonth.getMonth(),
-						1
-					);
-
-					return {
-						from: toDayStartTimestamp(firstPreviousMonth),
-						to: toDayEndTimestamp(lastPreviousMonth),
-					};
-				}
-
 				const fromDate = parseDateInputToDate(state.dateFilter.from);
 				const toDate = parseDateInputToDate(state.dateFilter.to);
+				const hasInvertedRange =
+					fromDate &&
+					toDate &&
+					fromDate.getTime() > toDate.getTime();
+				const normalizedFromDate = hasInvertedRange ? toDate : fromDate;
+				const normalizedToDate = hasInvertedRange ? fromDate : toDate;
 
 				return {
-					from: fromDate ? toDayStartTimestamp(fromDate) : null,
-					to: toDate ? toDayEndTimestamp(toDate) : null,
+					from: normalizedFromDate ? toDayStartTimestamp(normalizedFromDate) : null,
+					to: normalizedToDate ? toDayEndTimestamp(normalizedToDate) : null,
 				};
 			};
 
@@ -2762,12 +2703,24 @@
 			};
 
 			const getDateFilterSummaryLabel = () => {
-				if (state.dateFilter.preset !== 'custom') {
-					return DATE_FILTER_PRESET_LABELS[state.dateFilter.preset] || 'Todo';
-				}
-
 				const fromLabel = state.dateFilter.from || '-';
 				const toLabel = state.dateFilter.to || '-';
+				if (fromLabel === '-' && toLabel === '-') {
+					return 'Todo';
+				}
+
+				if (fromLabel !== '-' && toLabel === '-') {
+					return `${fromLabel} en adelante`;
+				}
+
+				if (fromLabel === '-' && toLabel !== '-') {
+					return `Hasta ${toLabel}`;
+				}
+
+				if (fromLabel === toLabel) {
+					return fromLabel;
+				}
+
 				return `${fromLabel} a ${toLabel}`;
 			};
 
@@ -3156,7 +3109,7 @@
 				totalReceiptsEl.textContent = formatNumber(total);
 				totalAmountEl.textContent = formatNumber(totalAmount);
 				sourceEl.textContent =
-					`Fuente: ${source} | Estado: ${state.statusFilter} | Periodo: ${getDateFilterSummaryLabel()}`;
+					`Fuente: ${source} | Estado: ${state.statusFilter} | Rango: ${getDateFilterSummaryLabel()}`;
 				lastUpdatedEl.textContent = `Ultima actualizacion: ${formatDate(Date.now())}`;
 				rowsCountEl.textContent = `Filas: ${formatNumber(total)}`;
 
@@ -3496,35 +3449,52 @@
 				renderRows(state.rows);
 			});
 
-			const syncDateFilterUI = () => {
-				const isCustomPreset = state.dateFilter.preset === 'custom';
-				dateFilterCustomEl.hidden = !isCustomPreset;
-				datePresetSelectEl.value = state.dateFilter.preset;
+			let dateRangePickerInstance = null;
 
-				if (isCustomPreset) {
-					dateFromInputEl.value = state.dateFilter.from;
-					dateToInputEl.value = state.dateFilter.to;
+			const syncDateFilterUI = () => {
+				const fromValue = String(state.dateFilter.from || '').trim();
+				const toValue = String(state.dateFilter.to || '').trim();
+
+				if (dateRangePickerInstance) {
+					if (fromValue && toValue) {
+						dateRangePickerInstance.setDate([fromValue, toValue], false);
+						return;
+					}
+
+					const singleDate = fromValue || toValue;
+					if (singleDate) {
+						dateRangePickerInstance.setDate([singleDate], false);
+						return;
+					}
+
+					dateRangePickerInstance.clear(false);
+					return;
 				}
+
+				if (!dateRangeInputEl) {
+					return;
+				}
+
+				if (fromValue && toValue) {
+					dateRangeInputEl.value = `${fromValue} a ${toValue}`;
+					return;
+				}
+
+				dateRangeInputEl.value = fromValue || toValue || '';
 			};
 
-			const applyDateFilter = () => {
-				const nextPreset = String(datePresetSelectEl.value || 'all').trim();
-				state.dateFilter.preset = DATE_FILTER_PRESET_KEYS.includes(nextPreset)
-					? nextPreset
-					: 'all';
+			const applyDateFilter = ({ from = '', to = '' } = {}) => {
+				state.dateFilter.from = String(from || '').trim();
+				state.dateFilter.to = String(to || '').trim();
 
-				if (state.dateFilter.preset === 'custom') {
-					state.dateFilter.from = String(dateFromInputEl.value || '').trim();
-					state.dateFilter.to = String(dateToInputEl.value || '').trim();
-
-					if (
-						state.dateFilter.from &&
-						state.dateFilter.to &&
-						state.dateFilter.from > state.dateFilter.to
-					) {
-						state.dateFilter.to = state.dateFilter.from;
-						dateToInputEl.value = state.dateFilter.to;
-					}
+				if (
+					state.dateFilter.from &&
+					state.dateFilter.to &&
+					state.dateFilter.from > state.dateFilter.to
+				) {
+					const tmpDate = state.dateFilter.from;
+					state.dateFilter.from = state.dateFilter.to;
+					state.dateFilter.to = tmpDate;
 				}
 
 				syncDateFilterUI();
@@ -3536,9 +3506,97 @@
 				});
 			};
 
-			datePresetSelectEl.addEventListener('change', applyDateFilter);
-			dateFromInputEl.addEventListener('change', applyDateFilter);
-			dateToInputEl.addEventListener('change', applyDateFilter);
+			const initializeDateRangePicker = () => {
+				if (!dateRangeInputEl) {
+					return;
+				}
+
+				const defaultDates = [];
+				if (state.dateFilter.from) {
+					defaultDates.push(state.dateFilter.from);
+				}
+				if (
+					state.dateFilter.to &&
+					state.dateFilter.to !== state.dateFilter.from
+				) {
+					defaultDates.push(state.dateFilter.to);
+				}
+
+				if (window.flatpickr) {
+					const locale =
+						window.flatpickr.l10ns && window.flatpickr.l10ns.es
+							? window.flatpickr.l10ns.es
+							: undefined;
+
+					dateRangePickerInstance = window.flatpickr(dateRangeInputEl, {
+						mode: 'range',
+						dateFormat: 'Y-m-d',
+						conjunction: ' a ',
+						allowInput: false,
+						locale,
+						defaultDate: defaultDates,
+						onChange: selectedDates => {
+							if (!Array.isArray(selectedDates) || selectedDates.length === 0) {
+								applyDateFilter({ from: '', to: '' });
+								return;
+							}
+
+							if (selectedDates.length < 2) {
+								return;
+							}
+
+							applyDateFilter({
+								from: formatDateInputValue(selectedDates[0]),
+								to: formatDateInputValue(selectedDates[1]),
+							});
+						},
+						onClose: selectedDates => {
+							if (!Array.isArray(selectedDates) || selectedDates.length !== 1) {
+								return;
+							}
+
+							const singleDate = formatDateInputValue(selectedDates[0]);
+							if (!singleDate) {
+								return;
+							}
+
+							applyDateFilter({
+								from: singleDate,
+								to: singleDate,
+							});
+						},
+					});
+
+					syncDateFilterUI();
+					return;
+				}
+
+				dateRangeInputEl.addEventListener('change', () => {
+					const rawValue = String(dateRangeInputEl.value || '').trim();
+					if (!rawValue) {
+						applyDateFilter({ from: '', to: '' });
+						return;
+					}
+
+					const parts = rawValue
+						.split(/\s+a\s+/i)
+						.map(part => part.trim())
+						.filter(Boolean);
+
+					const fromPart = parts[0] || '';
+					const toPart = parts[1] || parts[0] || '';
+					applyDateFilter({
+						from: fromPart,
+						to: toPart,
+					});
+				});
+
+				syncDateFilterUI();
+			};
+
+			clearDateRangeButtonEl.addEventListener('click', () => {
+				applyDateFilter({ from: '', to: '' });
+			});
 
 			const isJSONValid = value => {
 				if (typeof value !== 'string') {
@@ -3610,7 +3668,7 @@
 			});
 
 			syncStatusFilterButtons();
-			syncDateFilterUI();
+			initializeDateRangePicker();
 			renderRows([]);
 			renderSummary({ rows: [], source: 'none' });
 			setStatus({ title: 'Solicitando contexto del chat...' });
