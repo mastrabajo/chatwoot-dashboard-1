@@ -869,6 +869,7 @@
 				playerId: '',
 				rows: [],
 				source: 'none',
+				previewRequestContext: null,
 				statusFilter: 'approved',
 				loading: false,
 				lastContextFingerprint: '',
@@ -883,6 +884,8 @@
 				},
 			};
 			const playerUsernameCache = new Map();
+			const DEFAULT_RECEIPT_MODAL_PLACEHOLDER_TEXT =
+				'No se pudo cargar la vista previa en el modal.';
 
 			const formatNumber = value =>
 				new Intl.NumberFormat('es-UY', {
@@ -2617,6 +2620,34 @@
 				return 'document';
 			};
 
+			const resolvePreviewModeFromContentType = contentType => {
+				const normalizedContentType = String(contentType || '')
+					.split(';')[0]
+					.trim()
+					.toLowerCase();
+
+				if (!normalizedContentType) {
+					return '';
+				}
+
+				if (normalizedContentType.startsWith('image/')) {
+					return 'image';
+				}
+
+				if (normalizedContentType === 'application/pdf') {
+					return 'pdf';
+				}
+
+				if (
+					normalizedContentType.startsWith('text/') ||
+					normalizedContentType === 'application/xhtml+xml'
+				) {
+					return 'document';
+				}
+
+				return '';
+			};
+
 			const appendPdfFitParams = fileUrl => {
 				try {
 					const parsedUrl = new URL(fileUrl, window.location.origin);
@@ -2636,6 +2667,113 @@
 					return parsedUrl.toString();
 				} catch {
 					return fileUrl;
+				}
+			};
+
+			let activeReceiptPreviewObjectUrl = '';
+			let receiptModalLoadSequence = 0;
+
+			const revokeActiveReceiptPreviewObjectUrl = () => {
+				if (!activeReceiptPreviewObjectUrl) {
+					return;
+				}
+
+				try {
+					URL.revokeObjectURL(activeReceiptPreviewObjectUrl);
+				} catch {
+					// Ignore object URL cleanup failures.
+				}
+
+				activeReceiptPreviewObjectUrl = '';
+			};
+
+			const resetReceiptModalViewer = () => {
+				receiptModalFrameEl.hidden = true;
+				receiptModalFrameEl.src = 'about:blank';
+				receiptModalImageEl.hidden = true;
+				receiptModalImageEl.src = '';
+				receiptModalPlaceholderEl.hidden = true;
+				receiptModalPlaceholderEl.textContent =
+					DEFAULT_RECEIPT_MODAL_PLACEHOLDER_TEXT;
+			};
+
+			const showReceiptModalPlaceholder = message => {
+				resetReceiptModalViewer();
+				receiptModalPlaceholderEl.textContent =
+					String(message || '').trim() || DEFAULT_RECEIPT_MODAL_PLACEHOLDER_TEXT;
+				receiptModalPlaceholderEl.hidden = false;
+			};
+
+			const canFetchReceiptPreviewWithAuth = ({ fileUrl, requestContext }) => {
+				if (!fileUrl || !requestContext?.apiHost) {
+					return false;
+				}
+
+				try {
+					const previewUrl = new URL(fileUrl, requestContext.apiHost);
+					const apiUrl = new URL(requestContext.apiHost);
+					return previewUrl.origin === apiUrl.origin;
+				} catch {
+					return false;
+				}
+			};
+
+			const resolveReceiptPreviewSource = async ({
+				fileUrl,
+				fileLabel,
+				requestContext,
+			}) => {
+				const fallbackMode = resolvePreviewMode({ fileUrl, fileLabel });
+				if (!canFetchReceiptPreviewWithAuth({ fileUrl, requestContext })) {
+					return {
+						mode: fallbackMode,
+						url: fileUrl,
+						objectUrl: '',
+					};
+				}
+
+				const previewHeaders = new Headers(requestContext.headers || {});
+				previewHeaders.set('x-domain-token', BACKOFFICE_DOMAIN_TOKEN);
+
+				try {
+					const response = await fetch(fileUrl, {
+						method: 'GET',
+						headers: previewHeaders,
+						credentials: 'include',
+					});
+
+					if (!response.ok) {
+						throw new Error(`Preview request failed: ${response.status}`);
+					}
+
+					const blob = await response.blob();
+					if (!blob || !blob.size) {
+						throw new Error('Preview response returned an empty file.');
+					}
+
+					const objectUrl = URL.createObjectURL(blob);
+					const detectedMode =
+						resolvePreviewModeFromContentType(response.headers.get('content-type')) ||
+						resolvePreviewModeFromContentType(blob.type) ||
+						fallbackMode;
+
+					return {
+						mode: detectedMode,
+						url: objectUrl,
+						objectUrl,
+					};
+				} catch (error) {
+					debugLog(
+						'[Comprobantes App] No se pudo obtener vista previa autenticada del comprobante:',
+						fileUrl,
+						error
+					);
+
+					return {
+						mode: fallbackMode,
+						url: fileUrl,
+						objectUrl: '',
+					};
 				}
 			};
 
@@ -3118,17 +3256,15 @@
 					return;
 				}
 
+				receiptModalLoadSequence += 1;
+				revokeActiveReceiptPreviewObjectUrl();
 				receiptModalEl.hidden = true;
-				receiptModalFrameEl.src = 'about:blank';
-				receiptModalFrameEl.hidden = true;
-				receiptModalImageEl.src = '';
-				receiptModalImageEl.hidden = true;
-				receiptModalPlaceholderEl.hidden = true;
+				resetReceiptModalViewer();
 				receiptModalExternalLinkEl.href = '#';
 				document.body.classList.remove('modal-open');
 			};
 
-			const openReceiptModal = ({ fileUrl, fileLabel }) => {
+			const openReceiptModal = async ({ fileUrl, fileLabel }) => {
 				const safeUrl = sanitizeReceiptUrl(fileUrl);
 
 				if (isMobileViewerContext()) {
@@ -3140,11 +3276,7 @@
 				if (!safeUrl) {
 					receiptModalTitleEl.textContent = 'Comprobante';
 					receiptModalExternalLinkEl.href = '#';
-					receiptModalFrameEl.hidden = true;
-					receiptModalFrameEl.src = 'about:blank';
-					receiptModalImageEl.hidden = true;
-					receiptModalImageEl.src = '';
-					receiptModalPlaceholderEl.hidden = false;
+					showReceiptModalPlaceholder();
 					receiptModalEl.hidden = false;
 					document.body.classList.add('modal-open');
 					closeReceiptModalButtonEl.focus();
@@ -3155,9 +3287,38 @@
 
 				receiptModalTitleEl.textContent = safeFileLabel;
 				receiptModalExternalLinkEl.href = safeUrl;
-				setReceiptModalViewer({ mode: 'document', url: safeUrl });
 				receiptModalEl.hidden = false;
 				document.body.classList.add('modal-open');
+				showReceiptModalPlaceholder('Cargando vista previa...');
+
+				const currentLoadSequence = ++receiptModalLoadSequence;
+				const previewSource = await resolveReceiptPreviewSource({
+					fileUrl: safeUrl,
+					fileLabel: safeFileLabel,
+					requestContext: state.previewRequestContext,
+				});
+
+				if (
+					currentLoadSequence !== receiptModalLoadSequence ||
+					receiptModalEl.hidden
+				) {
+					if (previewSource.objectUrl) {
+						try {
+							URL.revokeObjectURL(previewSource.objectUrl);
+						} catch {
+							// Ignore object URL cleanup failures.
+						}
+					}
+					return;
+				}
+
+				revokeActiveReceiptPreviewObjectUrl();
+				activeReceiptPreviewObjectUrl = previewSource.objectUrl || '';
+				setReceiptModalViewer({
+					mode: previewSource.mode,
+					url: previewSource.url,
+				});
+				receiptModalEl.hidden = false;
 				closeReceiptModalButtonEl.focus();
 			};
 
@@ -3375,6 +3536,7 @@
 						return {
 							playerId,
 							payload,
+							requestContext,
 						};
 					} catch (error) {
 						lastError = error;
@@ -3420,11 +3582,13 @@
 				try {
 					let playerId = '';
 					let payload = null;
+					let previewRequestContext = null;
 
 					try {
 						const loadResult = await executeReceiptsLoad();
 						playerId = loadResult.playerId;
 						payload = loadResult.payload;
+						previewRequestContext = loadResult.requestContext;
 					} catch (error) {
 						if (!isAuthError(error) || !sessionHelper) {
 							throw error;
@@ -3446,11 +3610,13 @@
 						const retryResult = await executeReceiptsLoad();
 						playerId = retryResult.playerId;
 						payload = retryResult.payload;
+						previewRequestContext = retryResult.requestContext;
 					}
 
 					state.playerId = playerId;
 					state.rows = payload.rows;
 					state.source = payload.source;
+					state.previewRequestContext = previewRequestContext;
 					state.pagination.page = 1;
 
 					const renderedRows = renderRows(payload.rows);
@@ -3464,6 +3630,7 @@
 					finalError = error;
 				} finally {
 					if (finalError) {
+						state.previewRequestContext = null;
 						const status = finalError?.status || finalError?.response?.status;
 						const errorMessage =
 							finalError?.code === 'MISSING_BACKOFFICE_CONTEXT'
