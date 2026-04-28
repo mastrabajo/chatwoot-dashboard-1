@@ -749,9 +749,9 @@
 			);
 
 			const urlParams = new URLSearchParams(window.location.search);
-			const QUERY_API_HOST = normalizeApiHost(
+			const QUERY_API_HOST_RAW =
 				urlParams.get('apihost') || urlParams.get('apiHost')
-			);
+			;
 			const GLOBAL_CONTACT_ID = String(
 				urlParams.get('globalcontactId') ||
 					urlParams.get('globalContactId') ||
@@ -1240,7 +1240,7 @@
 				}
 
 				return uniq([
-					QUERY_API_HOST,
+					normalizeApiHost(QUERY_API_HOST_RAW),
 					runtimeHost,
 					sessionHost,
 					localStorageHost,
