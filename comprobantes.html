@@ -673,6 +673,7 @@
 							<tr>
 								<th>Fecha</th>
 								<th>Comprobante</th>
+								<th>User</th>
 								<th>Monto</th>
 								<th>Estado</th>
 								<th>Tipo</th>
@@ -881,6 +882,7 @@
 					to: '',
 				},
 			};
+			const playerUsernameCache = new Map();
 
 			const formatNumber = value =>
 				new Intl.NumberFormat('es-UY', {
@@ -2123,6 +2125,63 @@
 				return UUID_PATTERN.test(playerId) ? playerId : '';
 			};
 
+			const fetchPlayerById = async ({ requestContext, playerId }) => {
+				const normalizedPlayerId = String(playerId || '').trim();
+				if (!UUID_PATTERN.test(normalizedPlayerId)) {
+					return null;
+				}
+
+				const responsePayload = await fetchJSON({
+					url: `${requestContext.apiHost}/v1/players/${encodeURIComponent(
+						normalizedPlayerId
+					)}`,
+					headers: requestContext.headers,
+				});
+
+				return unwrapObjectData(responsePayload);
+			};
+
+			const resolvePlatformUsernameFromPlayer = player =>
+				String(
+					player?.platformUsername ||
+						player?.platform_username ||
+						player?.username ||
+						player?.userName ||
+						''
+				).trim();
+
+			const fetchPlatformUsernameByPlayerId = async ({
+				requestContext,
+				playerId,
+			}) => {
+				const normalizedPlayerId = String(playerId || '').trim();
+				if (!UUID_PATTERN.test(normalizedPlayerId)) {
+					return '';
+				}
+
+				if (playerUsernameCache.has(normalizedPlayerId)) {
+					return String(playerUsernameCache.get(normalizedPlayerId) || '').trim();
+				}
+
+				try {
+					const player = await fetchPlayerById({
+						requestContext,
+						playerId: normalizedPlayerId,
+					});
+					const platformUsername = resolvePlatformUsernameFromPlayer(player);
+					playerUsernameCache.set(normalizedPlayerId, platformUsername);
+					return platformUsername;
+				} catch (error) {
+					debugLog(
+						'[Comprobantes App] No se pudo obtener platformUsername por playerId:',
+						normalizedPlayerId,
+						error
+					);
+					playerUsernameCache.set(normalizedPlayerId, '');
+					return '';
+				}
+			};
+
 			const fetchPlayersList = async ({ requestContext }) => {
 				const responsePayload = await fetchJSON({
 					url: `${requestContext.apiHost}/v1/players`,
@@ -2323,6 +2382,40 @@
 				}
 
 				return normalizedAmount < 0 ? 'outgoing' : 'incoming';
+			};
+
+			const resolveReceiptPlayerId = receipt => {
+				const playerIdCandidates = uniq([
+					receipt?.playerId,
+					receipt?.player_id,
+					receipt?.playerUUID,
+					receipt?.player_uuid,
+					receipt?.player?.id,
+					receipt?.player?.playerId,
+					receipt?.player?.player_id,
+					receipt?.metadata?.playerId,
+					receipt?.metadata?.player_id,
+					receipt?.metadata?.playerUUID,
+					receipt?.metadata?.player_uuid,
+				]).map(value => String(value || '').trim());
+
+				return playerIdCandidates.find(value => UUID_PATTERN.test(value)) || '';
+			};
+
+			const resolveReceiptPlatformUsername = receipt => {
+				const usernameCandidates = uniq([
+					receipt?.platformUsername,
+					receipt?.platform_username,
+					receipt?.username,
+					receipt?.userName,
+					receipt?.player?.platformUsername,
+					receipt?.player?.platform_username,
+					receipt?.player?.username,
+					receipt?.metadata?.platformUsername,
+					receipt?.metadata?.platform_username,
+				]).map(value => String(value || '').trim());
+
+				return usernameCandidates.find(Boolean) || '';
 			};
 
 			const normalizeReceiptFileCandidate = value => {
@@ -2750,12 +2843,16 @@
 						const fileUrl = sanitizeReceiptUrl(
 							resolveReceiptFileUrl({ receipt, apiHost })
 						);
+						const playerId = resolveReceiptPlayerId(receipt);
+						const platformUsername = resolveReceiptPlatformUsername(receipt);
 
 						return {
 							timestamp,
 							dateLabel: formatDate(timestamp),
 							type: 'Incoming',
 							receiptId: String(receipt?.id || '').trim(),
+							playerId,
+							user: platformUsername,
 							status:
 								receipt?.statusText || receipt?.status_text || receipt?.status || '-',
 							amount: Math.abs(amount),
@@ -2773,6 +2870,71 @@
 						};
 					})
 					.filter(Boolean);
+			};
+
+			const enrichRowsWithPlayerUsernames = async ({ rows, requestContext }) => {
+				const rowList = Array.isArray(rows) ? rows : [];
+				if (!rowList.length) {
+					return rowList;
+				}
+
+				for (const row of rowList) {
+					const playerId = String(row?.playerId || '').trim();
+					const username = String(row?.user || '').trim();
+					if (UUID_PATTERN.test(playerId) && username) {
+						playerUsernameCache.set(playerId, username);
+					}
+				}
+
+				const uniquePlayerIds = uniq(
+					rowList
+						.map(row => String(row?.playerId || '').trim())
+						.filter(playerId => UUID_PATTERN.test(playerId))
+				);
+
+				const unresolvedPlayerIds = uniquePlayerIds.filter(
+					playerId => !playerUsernameCache.has(playerId)
+				);
+
+				const batchSize = 10;
+				for (
+					let batchStart = 0;
+					batchStart < unresolvedPlayerIds.length;
+					batchStart += batchSize
+				) {
+					const batch = unresolvedPlayerIds.slice(
+						batchStart,
+						batchStart + batchSize
+					);
+
+					await Promise.all(
+						batch.map(playerId =>
+							fetchPlatformUsernameByPlayerId({ requestContext, playerId })
+						)
+					);
+				}
+
+				return rowList.map(row => {
+					const existingUsername = String(row?.user || '').trim();
+					if (existingUsername) {
+						return row;
+					}
+
+					const playerId = String(row?.playerId || '').trim();
+					if (!UUID_PATTERN.test(playerId)) {
+						return row;
+					}
+
+					const cachedUsername = String(playerUsernameCache.get(playerId) || '').trim();
+					if (!cachedUsername) {
+						return row;
+					}
+
+					return {
+						...row,
+						user: cachedUsername,
+					};
+				});
 			};
 
 			const buildRowFingerprint = row => {
@@ -2921,9 +3083,13 @@
 					unfiltered: isGlobalContact,
 				});
 
-				const rows = normalizeTransferReceiptRows({
+				const normalizedRows = normalizeTransferReceiptRows({
 					receipts,
 					apiHost: requestContext.apiHost,
+				});
+				const rows = await enrichRowsWithPlayerUsernames({
+					rows: normalizedRows,
+					requestContext,
 				});
 
 				return {
@@ -3064,7 +3230,7 @@
 
 				if (!sortedRows.length) {
 					rowsEl.innerHTML =
-						'<tr><td colspan="7" class="empty">No hay comprobantes incoming para el estado seleccionado.</td></tr>';
+						'<tr><td colspan="8" class="empty">No hay comprobantes incoming para el estado seleccionado.</td></tr>';
 					return sortedRows;
 				}
 
@@ -3072,6 +3238,7 @@
 					.map(row => {
 						const amountClass = row.type === 'Outgoing' ? 'bad' : 'good';
 						const safeDate = escapeHTML(row.dateLabel);
+						const safeUser = escapeHTML(row.user || '-');
 						const safeStatus = escapeHTML(row.status);
 						const safeType = escapeHTML(row.type);
 						const safeCurrency = escapeHTML(row.currency);
@@ -3087,6 +3254,7 @@
 							'<tr>' +
 							`<td>${safeDate}</td>` +
 							`<td>${fileCell}</td>` +
+							`<td>${safeUser}</td>` +
 							`<td class="amount ${amountClass}">${formatNumber(row.amount)}</td>` +
 							`<td><span class="status-pill">${safeStatus}</span></td>` +
 							`<td>${safeType}</td>` +
