@@ -197,6 +197,26 @@
 				font-weight: 600;
 			}
 
+			.date-filter-select {
+				border: 1px solid #c9d9cc;
+				background: #ffffff;
+				color: var(--text);
+				border-radius: 8px;
+				padding: 6px 10px;
+				font-size: 12px;
+			}
+
+			.date-filter-custom {
+				display: inline-flex;
+				align-items: center;
+				gap: 8px;
+				flex-wrap: wrap;
+			}
+
+			.date-filter-custom[hidden] {
+				display: none;
+			}
+
 			.date-filter-input {
 				border: 1px solid #c9d9cc;
 				background: #ffffff;
@@ -204,21 +224,6 @@
 				border-radius: 8px;
 				padding: 6px 10px;
 				font-size: 12px;
-			}
-
-			.date-filter-clear {
-				border: 1px solid #c9d9cc;
-				background: #ffffff;
-				color: var(--text);
-				border-radius: 8px;
-				padding: 6px 10px;
-				cursor: pointer;
-				font-size: 12px;
-				font-weight: 600;
-			}
-
-			.date-filter-clear:hover {
-				border-color: #9ab8a0;
 			}
 
 			.details {
@@ -509,6 +514,24 @@
 					flex: 1 1 calc(33.33% - 6px);
 				}
 
+				.date-filters {
+					width: 100%;
+					margin-left: 0;
+				}
+
+				.date-filter-select {
+					flex: 1 1 100%;
+				}
+
+				.date-filter-custom {
+					width: 100%;
+				}
+
+				.date-filter-input {
+					flex: 1 1 calc(50% - 4px);
+					min-width: 0;
+				}
+
 				.status button {
 					width: 100%;
 				}
@@ -610,10 +633,21 @@
 					<button type="button" class="status-filter" data-status-filter="declined" aria-pressed="false">Declined</button>
 					<button type="button" class="status-filter" data-status-filter="duplicated" aria-pressed="false">Duplicated</button>
 					<div class="date-filters" role="group" aria-label="Filtrar comprobantes por fecha">
-						<span class="date-filter-label">Fecha:</span>
-						<input type="date" id="dateFromInput" class="date-filter-input" aria-label="Fecha desde" />
-						<input type="date" id="dateToInput" class="date-filter-input" aria-label="Fecha hasta" />
-						<button type="button" id="clearDateFilterButton" class="date-filter-clear">Limpiar</button>
+						<span class="date-filter-label">Periodo:</span>
+						<select id="datePresetSelect" class="date-filter-select" aria-label="Periodo de fecha">
+							<option value="all" selected>Todo</option>
+							<option value="today">Hoy</option>
+							<option value="yesterday">Ayer</option>
+							<option value="last_7_days">Ultimos 7 dias</option>
+							<option value="last_30_days">Ultimos 30 dias</option>
+							<option value="this_month">Este mes</option>
+							<option value="previous_month">Mes anterior</option>
+							<option value="custom">Personalizado</option>
+						</select>
+						<div class="date-filter-custom" id="dateFilterCustom" hidden>
+							<input type="date" id="dateFromInput" class="date-filter-input" aria-label="Fecha desde" />
+							<input type="date" id="dateToInput" class="date-filter-input" aria-label="Fecha hasta" />
+						</div>
 					</div>
 				</div>
 
@@ -659,7 +693,7 @@
 				</div>
 
 				<p class="hint">
-					Este tab muestra solo comprobantes incoming y permite filtrar por estado (Approved, Pending, Declined). La conexion y autenticacion usan la misma logica de sesion/contexto del modulo de cargas y retiros.
+					Este tab muestra solo comprobantes incoming y permite filtrar por estado y periodo de fecha. La conexion y autenticacion usan la misma logica de sesion/contexto del modulo de cargas y retiros.
 				</p>
 			</section>
 		</main>
@@ -773,11 +807,10 @@
 			const statusTitleEl = document.getElementById('statusTitle');
 			const statusFiltersEl = document.getElementById('statusFilters');
 			const refreshButtonEl = document.getElementById('refreshButton');
+			const datePresetSelectEl = document.getElementById('datePresetSelect');
+			const dateFilterCustomEl = document.getElementById('dateFilterCustom');
 			const dateFromInputEl = document.getElementById('dateFromInput');
 			const dateToInputEl = document.getElementById('dateToInput');
-			const clearDateFilterButtonEl = document.getElementById(
-				'clearDateFilterButton'
-			);
 			const paginationEl = document.getElementById('pagination');
 			const paginationSummaryEl = document.getElementById('paginationSummary');
 			const pageSizeSelectEl = document.getElementById('pageSizeSelect');
@@ -831,6 +864,7 @@
 					pageSize: 10,
 				},
 				dateFilter: {
+					preset: 'all',
 					from: '',
 					to: '',
 				},
@@ -897,6 +931,26 @@
 				declined: ['declined', 'rejected', 'rechazado', 'denied'],
 				duplicated: ['duplicated', 'duplicate', 'duplicado', 'duplica'],
 			};
+			const DATE_FILTER_PRESET_KEYS = [
+				'all',
+				'today',
+				'yesterday',
+				'last_7_days',
+				'last_30_days',
+				'this_month',
+				'previous_month',
+				'custom',
+			];
+			const DATE_FILTER_PRESET_LABELS = {
+				all: 'Todo',
+				today: 'Hoy',
+				yesterday: 'Ayer',
+				last_7_days: 'Ultimos 7 dias',
+				last_30_days: 'Ultimos 30 dias',
+				this_month: 'Este mes',
+				previous_month: 'Mes anterior',
+				custom: 'Personalizado',
+			};
 			const IMAGE_EXTENSIONS = new Set([
 				'png',
 				'jpg',
@@ -914,6 +968,15 @@
 			if (STATUS_FILTER_KEYS.includes(statusFilterFromQuery)) {
 				state.statusFilter = statusFilterFromQuery;
 			}
+
+			const datePresetFromQuery = normalizeText(
+				urlParams.get('datePreset') || urlParams.get('period')
+			).replace(/[\s\-]+/g, '_');
+			if (DATE_FILTER_PRESET_KEYS.includes(datePresetFromQuery)) {
+				state.dateFilter.preset = datePresetFromQuery;
+			}
+			state.dateFilter.from = String(urlParams.get('dateFrom') || '').trim();
+			state.dateFilter.to = String(urlParams.get('dateTo') || '').trim();
 
 			const normalizeContactId = value => String(value ?? '').trim();
 			const normalizePhone = value => String(value || '').replace(/\D/g, '');
@@ -2543,51 +2606,170 @@
 					})
 				);
 
-			const parseDateFilterBoundary = ({ value, endOfDay = false }) => {
+			const toDayStartTimestamp = date =>
+				new Date(
+					date.getFullYear(),
+					date.getMonth(),
+					date.getDate()
+				).getTime();
+
+			const toDayEndTimestamp = date =>
+				new Date(
+					date.getFullYear(),
+					date.getMonth(),
+					date.getDate(),
+					23,
+					59,
+					59,
+					999
+				).getTime();
+
+			const addDays = (date, amount) => {
+				const nextDate = new Date(
+					date.getFullYear(),
+					date.getMonth(),
+					date.getDate()
+				);
+				nextDate.setDate(nextDate.getDate() + amount);
+				return nextDate;
+			};
+
+			const parseDateInputToDate = value => {
 				const normalizedValue = String(value || '').trim();
-				if (!normalizedValue) {
+				const match = normalizedValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+				if (!match) {
 					return null;
 				}
 
-				const suffix = endOfDay ? 'T23:59:59.999' : 'T00:00:00.000';
-				const parsed = Date.parse(`${normalizedValue}${suffix}`);
-				return Number.isNaN(parsed) ? null : parsed;
+				const year = Number(match[1]);
+				const monthIndex = Number(match[2]) - 1;
+				const day = Number(match[3]);
+				const parsedDate = new Date(year, monthIndex, day);
+
+				if (
+					parsedDate.getFullYear() !== year ||
+					parsedDate.getMonth() !== monthIndex ||
+					parsedDate.getDate() !== day
+				) {
+					return null;
+				}
+
+				return parsedDate;
 			};
 
-			const matchesDateFilter = row => {
-				const fromTimestamp = parseDateFilterBoundary({
-					value: state.dateFilter.from,
-				});
-				const toTimestamp = parseDateFilterBoundary({
-					value: state.dateFilter.to,
-					endOfDay: true,
-				});
-				const rowTimestamp =
-					typeof row?.timestamp === 'number' && Number.isFinite(row.timestamp)
-						? row.timestamp
-						: null;
+			const resolveDateFilterRange = () => {
+				const preset = state.dateFilter.preset;
+				const today = new Date();
 
-				if (fromTimestamp === null && toTimestamp === null) {
+				if (preset === 'all') {
+					return { from: null, to: null };
+				}
+
+				if (preset === 'today') {
+					return {
+						from: toDayStartTimestamp(today),
+						to: toDayEndTimestamp(today),
+					};
+				}
+
+				if (preset === 'yesterday') {
+					const yesterday = addDays(today, -1);
+					return {
+						from: toDayStartTimestamp(yesterday),
+						to: toDayEndTimestamp(yesterday),
+					};
+				}
+
+				if (preset === 'last_7_days') {
+					const startDate = addDays(today, -6);
+					return {
+						from: toDayStartTimestamp(startDate),
+						to: toDayEndTimestamp(today),
+					};
+				}
+
+				if (preset === 'last_30_days') {
+					const startDate = addDays(today, -29);
+					return {
+						from: toDayStartTimestamp(startDate),
+						to: toDayEndTimestamp(today),
+					};
+				}
+
+				if (preset === 'this_month') {
+					const startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+					return {
+						from: toDayStartTimestamp(startDate),
+						to: toDayEndTimestamp(today),
+					};
+				}
+
+				if (preset === 'previous_month') {
+					const firstCurrentMonth = new Date(
+						today.getFullYear(),
+						today.getMonth(),
+						1
+					);
+					const lastPreviousMonth = addDays(firstCurrentMonth, -1);
+					const firstPreviousMonth = new Date(
+						lastPreviousMonth.getFullYear(),
+						lastPreviousMonth.getMonth(),
+						1
+					);
+
+					return {
+						from: toDayStartTimestamp(firstPreviousMonth),
+						to: toDayEndTimestamp(lastPreviousMonth),
+					};
+				}
+
+				const fromDate = parseDateInputToDate(state.dateFilter.from);
+				const toDate = parseDateInputToDate(state.dateFilter.to);
+
+				return {
+					from: fromDate ? toDayStartTimestamp(fromDate) : null,
+					to: toDate ? toDayEndTimestamp(toDate) : null,
+				};
+			};
+
+			const getFilteredRows = rows => {
+				const range = resolveDateFilterRange();
+
+				return getStatusFilteredRows(rows).filter(row => {
+					if (range.from === null && range.to === null) {
+						return true;
+					}
+
+					const rowTimestamp =
+						typeof row?.timestamp === 'number' && Number.isFinite(row.timestamp)
+							? row.timestamp
+							: null;
+
+					if (rowTimestamp === null) {
+						return false;
+					}
+
+					if (range.from !== null && rowTimestamp < range.from) {
+						return false;
+					}
+
+					if (range.to !== null && rowTimestamp > range.to) {
+						return false;
+					}
+
 					return true;
-				}
-
-				if (rowTimestamp === null) {
-					return false;
-				}
-
-				if (fromTimestamp !== null && rowTimestamp < fromTimestamp) {
-					return false;
-				}
-
-				if (toTimestamp !== null && rowTimestamp > toTimestamp) {
-					return false;
-				}
-
-				return true;
+				});
 			};
 
-			const getFilteredRows = rows =>
-				getStatusFilteredRows(rows).filter(matchesDateFilter);
+			const getDateFilterSummaryLabel = () => {
+				if (state.dateFilter.preset !== 'custom') {
+					return DATE_FILTER_PRESET_LABELS[state.dateFilter.preset] || 'Todo';
+				}
+
+				const fromLabel = state.dateFilter.from || '-';
+				const toLabel = state.dateFilter.to || '-';
+				return `${fromLabel} a ${toLabel}`;
+			};
 
 			const normalizeTransferReceiptRows = ({ receipts, apiHost }) => {
 				return (Array.isArray(receipts) ? receipts : [])
@@ -2973,7 +3155,8 @@
 
 				totalReceiptsEl.textContent = formatNumber(total);
 				totalAmountEl.textContent = formatNumber(totalAmount);
-				sourceEl.textContent = `Fuente: ${source} | Estado: ${state.statusFilter}`;
+				sourceEl.textContent =
+					`Fuente: ${source} | Estado: ${state.statusFilter} | Periodo: ${getDateFilterSummaryLabel()}`;
 				lastUpdatedEl.textContent = `Ultima actualizacion: ${formatDate(Date.now())}`;
 				rowsCountEl.textContent = `Filas: ${formatNumber(total)}`;
 
@@ -3313,19 +3496,38 @@
 				renderRows(state.rows);
 			});
 
-			const applyDateFilter = () => {
-				state.dateFilter.from = String(dateFromInputEl.value || '').trim();
-				state.dateFilter.to = String(dateToInputEl.value || '').trim();
+			const syncDateFilterUI = () => {
+				const isCustomPreset = state.dateFilter.preset === 'custom';
+				dateFilterCustomEl.hidden = !isCustomPreset;
+				datePresetSelectEl.value = state.dateFilter.preset;
 
-				if (
-					state.dateFilter.from &&
-					state.dateFilter.to &&
-					state.dateFilter.from > state.dateFilter.to
-				) {
-					state.dateFilter.to = state.dateFilter.from;
+				if (isCustomPreset) {
+					dateFromInputEl.value = state.dateFilter.from;
 					dateToInputEl.value = state.dateFilter.to;
 				}
+			};
 
+			const applyDateFilter = () => {
+				const nextPreset = String(datePresetSelectEl.value || 'all').trim();
+				state.dateFilter.preset = DATE_FILTER_PRESET_KEYS.includes(nextPreset)
+					? nextPreset
+					: 'all';
+
+				if (state.dateFilter.preset === 'custom') {
+					state.dateFilter.from = String(dateFromInputEl.value || '').trim();
+					state.dateFilter.to = String(dateToInputEl.value || '').trim();
+
+					if (
+						state.dateFilter.from &&
+						state.dateFilter.to &&
+						state.dateFilter.from > state.dateFilter.to
+					) {
+						state.dateFilter.to = state.dateFilter.from;
+						dateToInputEl.value = state.dateFilter.to;
+					}
+				}
+
+				syncDateFilterUI();
 				state.pagination.page = 1;
 				const renderedRows = renderRows(state.rows);
 				renderSummary({
@@ -3334,25 +3536,9 @@
 				});
 			};
 
+			datePresetSelectEl.addEventListener('change', applyDateFilter);
 			dateFromInputEl.addEventListener('change', applyDateFilter);
 			dateToInputEl.addEventListener('change', applyDateFilter);
-
-			clearDateFilterButtonEl.addEventListener('click', () => {
-				if (!state.dateFilter.from && !state.dateFilter.to) {
-					return;
-				}
-
-				dateFromInputEl.value = '';
-				dateToInputEl.value = '';
-				state.dateFilter.from = '';
-				state.dateFilter.to = '';
-				state.pagination.page = 1;
-				const renderedRows = renderRows(state.rows);
-				renderSummary({
-					rows: renderedRows,
-					source: state.source,
-				});
-			});
 
 			const isJSONValid = value => {
 				if (typeof value !== 'string') {
@@ -3424,6 +3610,7 @@
 			});
 
 			syncStatusFilterButtons();
+			syncDateFilterUI();
 			renderRows([]);
 			renderSummary({ rows: [], source: 'none' });
 			setStatus({ title: 'Solicitando contexto del chat...' });
