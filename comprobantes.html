@@ -749,6 +749,9 @@
 			);
 
 			const urlParams = new URLSearchParams(window.location.search);
+			const QUERY_API_HOST = normalizeApiHost(
+				urlParams.get('apihost') || urlParams.get('apiHost')
+			);
 			const GLOBAL_CONTACT_ID = String(
 				urlParams.get('globalcontactId') ||
 					urlParams.get('globalContactId') ||
@@ -1215,10 +1218,11 @@
 				return normalized.replace(/\/$/, '');
 			};
 
-			const resolveApiHost = ({ parentConfig, session }) => {
-				const queryHost = normalizeApiHost(
-					urlParams.get('apihost') || urlParams.get('apiHost')
-				);
+			const resolveApiHostCandidates = ({
+				parentConfig,
+				session,
+				contextApiHost = '',
+			}) => {
 				const runtimeHost = normalizeApiHost(
 					parentConfig?.backofficeApiHost || parentConfig?.backoffice_api_host
 				);
@@ -1235,13 +1239,41 @@
 					localStorageHost = '';
 				}
 
-				return (
-					queryHost ||
-					runtimeHost ||
-					sessionHost ||
-					localStorageHost ||
-					DEFAULT_BACKOFFICE_API_HOST
-				);
+				return uniq([
+					QUERY_API_HOST,
+					runtimeHost,
+					sessionHost,
+					localStorageHost,
+					normalizeApiHost(contextApiHost),
+					DEFAULT_BACKOFFICE_API_HOST,
+				]);
+			};
+
+			const resolveApiHost = ({ parentConfig, session, contextApiHost = '' }) => {
+				const candidates = resolveApiHostCandidates({
+					parentConfig,
+					session,
+					contextApiHost,
+				});
+
+				return candidates[0] || DEFAULT_BACKOFFICE_API_HOST;
+			};
+
+			const isNetworkOrCorsError = error => {
+				if (!error) {
+					return false;
+				}
+
+				if (error.code === 'FETCH_NETWORK_ERROR') {
+					return true;
+				}
+
+				const status = error?.status || error?.response?.status;
+				if (typeof status === 'number') {
+					return status <= 0;
+				}
+
+				return error instanceof TypeError;
 			};
 
 			const isAuthError = error => {
@@ -1557,7 +1589,7 @@
 				);
 			};
 
-			const resolveRequestContext = context => {
+			const resolveRequestContext = (context, { apiHostOverride = '' } = {}) => {
 				const parentConfig = resolveParentConfig();
 				const session = parseBackofficeSession();
 				const contextCredentials = resolveBackofficeCredentialsFromContext(context);
@@ -1613,8 +1645,12 @@
 				}) || contextCredentials.bearerToken;
 				const effectiveBearerToken = bearerToken || backofficeApiToken;
 				const apiHost =
-					resolveApiHost({ parentConfig, session }) ||
-					normalizeApiHost(contextCredentials.apiHost);
+					normalizeApiHost(apiHostOverride) ||
+					resolveApiHost({
+						parentConfig,
+						session,
+						contextApiHost: contextCredentials.apiHost,
+					});
 
 				const hasLegacySessionContext =
 					Boolean(tenantId) &&
@@ -1726,6 +1762,86 @@
 				return [];
 			};
 
+			const resolvePaginationState = payload => {
+				if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+					return {
+						page: null,
+						pageSize: null,
+						totalPages: null,
+						hasNext: false,
+					};
+				}
+
+				const pickNumeric = (...values) => {
+					for (const value of values) {
+						const parsed = parseIntegerValue(value);
+						if (parsed !== null && parsed > 0) {
+							return parsed;
+						}
+					}
+
+					return null;
+				};
+
+				const meta =
+					(payload.meta && typeof payload.meta === 'object' ? payload.meta : null) ||
+					(payload.pagination && typeof payload.pagination === 'object'
+						? payload.pagination
+						: null);
+
+				const links =
+					(payload.links && typeof payload.links === 'object' ? payload.links : null) ||
+					(meta?.links && typeof meta.links === 'object' ? meta.links : null);
+
+				const page = pickNumeric(
+					payload.page,
+					payload.currentPage,
+					payload.current_page,
+					meta?.page,
+					meta?.currentPage,
+					meta?.current_page
+				);
+				const pageSize = pickNumeric(
+					payload.pageSize,
+					payload.page_size,
+					payload.limit,
+					meta?.pageSize,
+					meta?.page_size,
+					meta?.perPage,
+					meta?.per_page,
+					meta?.limit
+				);
+				const totalPages = pickNumeric(
+					payload.totalPages,
+					payload.total_pages,
+					meta?.totalPages,
+					meta?.total_pages,
+					meta?.pages,
+					meta?.pageCount,
+					meta?.page_count
+				);
+
+				const hasNextByFlag =
+					Boolean(payload.hasNextPage) ||
+					Boolean(payload.has_next_page) ||
+					Boolean(meta?.hasNextPage) ||
+					Boolean(meta?.has_next_page);
+
+				const hasNextByLinks = Boolean(
+					links?.next || links?.nextPage || links?.next_page
+				);
+
+				const hasNextByPages =
+					page !== null && totalPages !== null ? page < totalPages : false;
+
+				return {
+					page,
+					pageSize,
+					totalPages,
+					hasNext: hasNextByFlag || hasNextByLinks || hasNextByPages,
+				};
+			};
+
 			const unwrapObjectData = payload => {
 				if (!payload || typeof payload !== 'object') {
 					return null;
@@ -1764,11 +1880,22 @@
 					accountId: requestHeaders.get('x-account-id') || '',
 				});
 
-				const response = await fetch(requestUrl, {
-					method: 'GET',
-					headers: requestHeaders,
-					credentials: 'include',
-				});
+				let response = null;
+				try {
+					response = await fetch(requestUrl, {
+						method: 'GET',
+						headers: requestHeaders,
+						credentials: 'include',
+					});
+				} catch (error) {
+					const networkError = new Error(
+						`No se pudo conectar con el API (${requestUrl}).`
+					);
+					networkError.code = 'FETCH_NETWORK_ERROR';
+					networkError.cause = error;
+					networkError.requestUrl = requestUrl;
+					throw networkError;
+				}
 
 				let payload = null;
 				try {
@@ -2462,23 +2589,70 @@
 				const normalizedPlayerId = String(playerId || '').trim();
 				const shouldFilterByPlayer =
 					!unfiltered && UUID_PATTERN.test(normalizedPlayerId);
+				const endpointUrl = shouldFilterByPlayer
+					? `${requestContext.apiHost}/v1/player-transfer-receipts/by-player/${encodeURIComponent(
+							normalizedPlayerId
+						)}`
+					: `${requestContext.apiHost}/v1/player-transfer-receipts`;
 
-				const responsePayload = await fetchJSON({
-					url: shouldFilterByPlayer
-						? `${requestContext.apiHost}/v1/player-transfer-receipts/by-player/${encodeURIComponent(
-								normalizedPlayerId
-							)}`
-						: `${requestContext.apiHost}/v1/player-transfer-receipts`,
-					headers: requestContext.headers,
-					params: shouldFilterByPlayer
-						? {}
-						: {
-								tenantId: requestContext.tenantId,
-								accountId: requestContext.accountId,
-							},
-				});
+				const baseParams = shouldFilterByPlayer
+					? {}
+					: {
+							tenantId: requestContext.tenantId,
+							accountId: requestContext.accountId,
+						};
 
-				return normalizeListPayload(responsePayload);
+				const allReceipts = [];
+				const seenReceiptKeys = new Set();
+				const maxPages = 200;
+				let currentPage = 1;
+				let nextPageSize = 100;
+
+				for (let visitedPages = 0; visitedPages < maxPages; visitedPages += 1) {
+					const responsePayload = await fetchJSON({
+						url: endpointUrl,
+						headers: requestContext.headers,
+						params: {
+							...baseParams,
+							page: currentPage,
+							pageSize: nextPageSize,
+							limit: nextPageSize,
+						},
+					});
+
+					const pageRows = normalizeListPayload(responsePayload);
+					for (const row of pageRows) {
+						const key = String(
+							row?.id || row?.receiptId || row?.transferUniqueId || ''
+						).trim();
+
+						if (key && seenReceiptKeys.has(key)) {
+							continue;
+						}
+
+						if (key) {
+							seenReceiptKeys.add(key);
+						}
+
+						allReceipts.push(row);
+					}
+
+					const paginationState = resolvePaginationState(responsePayload);
+					if (!paginationState.hasNext) {
+						break;
+					}
+
+					const resolvedPageSize =
+						paginationState.pageSize || parseIntegerValue(nextPageSize) || 100;
+					nextPageSize = Math.max(1, resolvedPageSize);
+
+					currentPage =
+						paginationState.page !== null
+							? paginationState.page + 1
+							: currentPage + 1;
+				}
+
+				return allReceipts;
 			};
 
 			const loadReceiptRows = async ({
@@ -2557,14 +2731,10 @@
 				}
 
 				const safeFileLabel = String(fileLabel || '').trim() || 'Comprobante';
-				const previewMode = resolvePreviewMode({
-					fileUrl: safeUrl,
-					fileLabel: safeFileLabel,
-				});
 
 				receiptModalTitleEl.textContent = safeFileLabel;
 				receiptModalExternalLinkEl.href = safeUrl;
-				setReceiptModalViewer({ mode: previewMode, url: safeUrl });
+				setReceiptModalViewer({ mode: 'document', url: safeUrl });
 				receiptModalEl.hidden = false;
 				document.body.classList.add('modal-open');
 				closeReceiptModalButtonEl.focus();
@@ -2706,60 +2876,100 @@
 			const executeReceiptsLoad = async () => {
 				await ensureSessionReady();
 
-				let requestContext = null;
-				try {
-					requestContext = resolveRequestContext(state.context);
-					requestContext = await enrichRequestContextFromAccount(requestContext);
-				} catch (error) {
-					const shouldRetryMissingContext =
-						error?.code === 'MISSING_BACKOFFICE_CONTEXT' && Boolean(sessionHelper);
-
-					if (!shouldRetryMissingContext) {
-						throw error;
-					}
-
-					const refreshResult = await ensureSessionReady({ forceRefresh: true });
-					if (
-						refreshResult?.state !== 'refreshed' &&
-						refreshResult?.state !== 'not_needed'
-					) {
-						throw error;
-					}
-
-					requestContext = resolveRequestContext(state.context);
-					requestContext = await enrichRequestContextFromAccount(requestContext);
-				}
-
-				const globalContactMode = isGlobalContactContext(state.context);
-				let playerId = '';
-
-				if (globalContactMode) {
-					playerId = GLOBAL_CONTACT_ID ? `GLOBAL:${GLOBAL_CONTACT_ID}` : 'GLOBAL';
-				} else {
-					playerId = await resolvePlayerId({
-						context: state.context,
-						requestContext,
-					});
-
-					if (!playerId) {
-						const error = new Error(
-							'No se pudo resolver playerId con el contexto de contacto.'
-						);
-						error.code = 'PLAYER_ID_NOT_FOUND';
-						throw error;
-					}
-				}
-
-				const payload = await loadReceiptRows({
-					playerId,
-					requestContext,
-					isGlobalContact: globalContactMode,
+				const parentConfig = resolveParentConfig();
+				const session = parseBackofficeSession();
+				const contextCredentials = resolveBackofficeCredentialsFromContext(
+					state.context
+				);
+				const apiHostCandidates = resolveApiHostCandidates({
+					parentConfig,
+					session,
+					contextApiHost: contextCredentials.apiHost,
 				});
 
-				return {
-					playerId,
-					payload,
-				};
+				let lastError = null;
+
+				for (let index = 0; index < apiHostCandidates.length; index += 1) {
+					const apiHostCandidate = apiHostCandidates[index];
+					const hasNextCandidate = index < apiHostCandidates.length - 1;
+
+					try {
+						let requestContext = null;
+						try {
+							requestContext = resolveRequestContext(state.context, {
+								apiHostOverride: apiHostCandidate,
+							});
+							requestContext = await enrichRequestContextFromAccount(requestContext);
+						} catch (error) {
+							const shouldRetryMissingContext =
+								error?.code === 'MISSING_BACKOFFICE_CONTEXT' && Boolean(sessionHelper);
+
+							if (!shouldRetryMissingContext) {
+								throw error;
+							}
+
+							const refreshResult = await ensureSessionReady({ forceRefresh: true });
+							if (
+								refreshResult?.state !== 'refreshed' &&
+								refreshResult?.state !== 'not_needed'
+							) {
+								throw error;
+							}
+
+							requestContext = resolveRequestContext(state.context, {
+								apiHostOverride: apiHostCandidate,
+							});
+							requestContext = await enrichRequestContextFromAccount(requestContext);
+						}
+
+						const globalContactMode = isGlobalContactContext(state.context);
+						let playerId = '';
+
+						if (globalContactMode) {
+							playerId = GLOBAL_CONTACT_ID ? `GLOBAL:${GLOBAL_CONTACT_ID}` : 'GLOBAL';
+						} else {
+							playerId = await resolvePlayerId({
+								context: state.context,
+								requestContext,
+							});
+
+							if (!playerId) {
+								const error = new Error(
+									'No se pudo resolver playerId con el contexto de contacto.'
+								);
+								error.code = 'PLAYER_ID_NOT_FOUND';
+								throw error;
+							}
+						}
+
+						const payload = await loadReceiptRows({
+							playerId,
+							requestContext,
+							isGlobalContact: globalContactMode,
+						});
+
+						return {
+							playerId,
+							payload,
+						};
+					} catch (error) {
+						lastError = error;
+
+						if (!hasNextCandidate || !isNetworkOrCorsError(error)) {
+							throw error;
+						}
+
+						debugLog(
+							'[Comprobantes App] Host no disponible (posible CORS/red), reintentando con fallback:',
+							{
+								failedHost: apiHostCandidate,
+								nextHost: apiHostCandidates[index + 1],
+							}
+						);
+					}
+				}
+
+				throw lastError || new Error('No se pudo cargar comprobantes.');
 			};
 
 			const loadReceiptsData = async () => {
@@ -2836,6 +3046,8 @@
 								? 'Sesion de Backoffice incompleta. Reautentica en Backoffice y recarga la conversacion.'
 								: isAuthError(finalError)
 									? 'Sesion expirada o sin permisos en Backoffice.'
+									: isNetworkOrCorsError(finalError)
+										? 'No se pudo conectar al API de Backoffice (posible bloqueo CORS o red). Verifica el host y que permita solicitudes desde este origen.'
 									: status
 										? `No se pudieron cargar los comprobantes. (status: ${status})`
 										: finalError?.message ||
