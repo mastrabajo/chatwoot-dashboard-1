@@ -570,6 +570,7 @@
 					<button type="button" class="status-filter is-active" data-status-filter="approved" aria-pressed="true">Approved</button>
 					<button type="button" class="status-filter" data-status-filter="pending" aria-pressed="false">Pending</button>
 					<button type="button" class="status-filter" data-status-filter="declined" aria-pressed="false">Declined</button>
+					<button type="button" class="status-filter" data-status-filter="duplicated" aria-pressed="false">Duplicated</button>
 				</div>
 
 				<div class="details">
@@ -836,11 +837,12 @@
 					.trim()
 					.toLowerCase();
 
-			const STATUS_FILTER_KEYS = ['approved', 'pending', 'declined'];
+			const STATUS_FILTER_KEYS = ['approved', 'pending', 'declined', 'duplicated'];
 			const STATUS_FILTER_ALIASES = {
 				approved: ['approved', 'aprobado'],
 				pending: ['pending', 'pendiente'],
 				declined: ['declined', 'rejected', 'rechazado', 'denied'],
+				duplicated: ['duplicated', 'duplicate', 'duplicado', 'duplica'],
 			};
 			const IMAGE_EXTENSIONS = new Set([
 				'png',
@@ -2621,6 +2623,7 @@
 					});
 
 					const pageRows = normalizeListPayload(responsePayload);
+					let newUniqueRows = 0;
 					for (const row of pageRows) {
 						const key = String(
 							row?.id || row?.receiptId || row?.transferUniqueId || ''
@@ -2635,21 +2638,32 @@
 						}
 
 						allReceipts.push(row);
+						newUniqueRows += 1;
 					}
 
 					const paginationState = resolvePaginationState(responsePayload);
-					if (!paginationState.hasNext) {
+					const resolvedPage =
+						paginationState.page !== null ? paginationState.page : currentPage;
+					const resolvedPageSize = Math.max(
+						1,
+						paginationState.pageSize || pageRows.length || nextPageSize || 100
+					);
+					const reachedKnownLastPage =
+						paginationState.totalPages !== null &&
+						resolvedPage >= paginationState.totalPages;
+					const isShortPage = pageRows.length > 0 && pageRows.length < resolvedPageSize;
+
+					if (
+						pageRows.length === 0 ||
+						newUniqueRows === 0 ||
+						reachedKnownLastPage ||
+						(!paginationState.hasNext && isShortPage)
+					) {
 						break;
 					}
 
-					const resolvedPageSize =
-						paginationState.pageSize || parseIntegerValue(nextPageSize) || 100;
-					nextPageSize = Math.max(1, resolvedPageSize);
-
-					currentPage =
-						paginationState.page !== null
-							? paginationState.page + 1
-							: currentPage + 1;
+					nextPageSize = resolvedPageSize;
+					currentPage = resolvedPage + 1;
 				}
 
 				return allReceipts;
