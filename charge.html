@@ -1391,6 +1391,90 @@
         return [];
       };
 
+      const resolvePaginationState = payload => {
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+          return {
+            page: null,
+            pageSize: null,
+            totalPages: null,
+            hasNext: false,
+          };
+        }
+
+        const pickNumeric = (...values) => {
+          for (const value of values) {
+            const parsed = parseIntegerValue(value);
+            if (parsed !== null && parsed > 0) {
+              return parsed;
+            }
+          }
+
+          return null;
+        };
+
+        const meta =
+          payload.meta && typeof payload.meta === 'object'
+            ? payload.meta
+            : payload.pagination && typeof payload.pagination === 'object'
+            ? payload.pagination
+            : null;
+
+        const links =
+          payload.links && typeof payload.links === 'object'
+            ? payload.links
+            : meta?.links && typeof meta.links === 'object'
+            ? meta.links
+            : null;
+
+        const page = pickNumeric(
+          payload.page,
+          payload.currentPage,
+          payload.current_page,
+          meta?.page,
+          meta?.currentPage,
+          meta?.current_page
+        );
+        const pageSize = pickNumeric(
+          payload.pageSize,
+          payload.page_size,
+          payload.limit,
+          meta?.pageSize,
+          meta?.page_size,
+          meta?.perPage,
+          meta?.per_page,
+          meta?.limit
+        );
+        const totalPages = pickNumeric(
+          payload.totalPages,
+          payload.total_pages,
+          meta?.totalPages,
+          meta?.total_pages,
+          meta?.pages,
+          meta?.pageCount,
+          meta?.page_count
+        );
+
+        const hasNextByFlag =
+          Boolean(payload.hasNextPage) ||
+          Boolean(payload.has_next_page) ||
+          Boolean(meta?.hasNextPage) ||
+          Boolean(meta?.has_next_page);
+
+        const hasNextByLinks = Boolean(
+          links?.next || links?.nextPage || links?.next_page
+        );
+
+        const hasNextByPages =
+          page !== null && totalPages !== null ? page < totalPages : false;
+
+        return {
+          page,
+          pageSize,
+          totalPages,
+          hasNext: hasNextByFlag || hasNextByLinks || hasNextByPages,
+        };
+      };
+
       const unwrapObjectData = payload => {
         if (!payload || typeof payload !== 'object') {
           return null;
@@ -2083,23 +2167,94 @@
         const normalizedPlayerId = String(playerId || '').trim();
         const shouldFilterByPlayer =
           !unfiltered && UUID_PATTERN.test(normalizedPlayerId);
+        const endpointUrl = shouldFilterByPlayer
+          ? `${requestContext.apiHost}/v1/player-transfer-receipts/by-player/${encodeURIComponent(
+              normalizedPlayerId
+            )}`
+          : `${requestContext.apiHost}/v1/player-transfer-receipts`;
+        const baseParams = shouldFilterByPlayer
+          ? {}
+          : {
+              tenantId: requestContext.tenantId,
+              accountId: requestContext.accountId,
+            };
 
-        const responsePayload = await fetchJSON({
-          url: shouldFilterByPlayer
-            ? `${requestContext.apiHost}/v1/player-transfer-receipts/by-player/${encodeURIComponent(
-                normalizedPlayerId
-              )}`
-            : `${requestContext.apiHost}/v1/player-transfer-receipts`,
-          headers: requestContext.headers,
-          params: shouldFilterByPlayer
-            ? {}
-            : {
-                tenantId: requestContext.tenantId,
-                accountId: requestContext.accountId,
-              },
-        });
+        if (shouldFilterByPlayer) {
+          const responsePayload = await fetchJSON({
+            url: endpointUrl,
+            headers: requestContext.headers,
+            params: baseParams,
+          });
 
-        return normalizeListPayload(responsePayload);
+          return normalizeListPayload(responsePayload);
+        }
+
+        const RECEIPTS_PAGE_SIZE = 1000;
+        const RECEIPTS_MAX_PAGES = 1000;
+        const allRows = [];
+        const seenRowIds = new Set();
+        let currentPage = 1;
+        let nextPageSize = RECEIPTS_PAGE_SIZE;
+
+        for (
+          let visitedPages = 0;
+          visitedPages < RECEIPTS_MAX_PAGES;
+          visitedPages += 1
+        ) {
+          const responsePayload = await fetchJSON({
+            url: endpointUrl,
+            headers: requestContext.headers,
+            params: {
+              ...baseParams,
+              page: currentPage,
+              pageSize: nextPageSize,
+              page_size: nextPageSize,
+              limit: nextPageSize,
+              perPage: nextPageSize,
+              per_page: nextPageSize,
+              size: nextPageSize,
+            },
+          });
+
+          const pageRows = normalizeListPayload(responsePayload);
+          let newRows = 0;
+
+          for (const row of pageRows) {
+            const rowId = String(
+              row?.id || row?.receiptId || row?.transferUniqueId || row?.transfer_unique_id || ''
+            ).trim();
+            if (!rowId) {
+              continue;
+            }
+
+            if (seenRowIds.has(rowId)) {
+              continue;
+            }
+
+            seenRowIds.add(rowId);
+            allRows.push(row);
+            newRows += 1;
+          }
+
+          const paginationState = resolvePaginationState(responsePayload);
+          const resolvedPage =
+            paginationState.page !== null ? paginationState.page : currentPage;
+          const resolvedPageSize = Math.max(
+            1,
+            paginationState.pageSize || pageRows.length || nextPageSize || 100
+          );
+          const reachedKnownLastPage =
+            paginationState.totalPages !== null && resolvedPage >= paginationState.totalPages;
+
+          if (pageRows.length === 0 || newRows === 0 || reachedKnownLastPage) {
+            break;
+          }
+
+          nextPageSize = resolvedPageSize;
+          currentPage = resolvedPage + 1;
+        }
+
+        return allRows;
       };
 
       const fetchPlayerBalanceMovements = async ({
@@ -2110,23 +2265,94 @@
         const normalizedPlayerId = String(playerId || '').trim();
         const shouldFilterByPlayer =
           !unfiltered && UUID_PATTERN.test(normalizedPlayerId);
+        const endpointUrl = shouldFilterByPlayer
+          ? `${requestContext.apiHost}/v1/player-balance-movements/by-player/${encodeURIComponent(
+              normalizedPlayerId
+            )}`
+          : `${requestContext.apiHost}/v1/player-balance-movements`;
+        const baseParams = shouldFilterByPlayer
+          ? {}
+          : {
+              tenantId: requestContext.tenantId,
+              accountId: requestContext.accountId,
+            };
 
-        const responsePayload = await fetchJSON({
-          url: shouldFilterByPlayer
-            ? `${requestContext.apiHost}/v1/player-balance-movements/by-player/${encodeURIComponent(
-                normalizedPlayerId
-              )}`
-            : `${requestContext.apiHost}/v1/player-balance-movements`,
-          headers: requestContext.headers,
-          params: shouldFilterByPlayer
-            ? {}
-            : {
-                tenantId: requestContext.tenantId,
-                accountId: requestContext.accountId,
-              },
-        });
+        if (shouldFilterByPlayer) {
+          const responsePayload = await fetchJSON({
+            url: endpointUrl,
+            headers: requestContext.headers,
+            params: baseParams,
+          });
 
-        return normalizeListPayload(responsePayload);
+          return normalizeListPayload(responsePayload);
+        }
+
+        const MOVEMENTS_PAGE_SIZE = 1000;
+        const MOVEMENTS_MAX_PAGES = 1000;
+        const allRows = [];
+        const seenRowIds = new Set();
+        let currentPage = 1;
+        let nextPageSize = MOVEMENTS_PAGE_SIZE;
+
+        for (
+          let visitedPages = 0;
+          visitedPages < MOVEMENTS_MAX_PAGES;
+          visitedPages += 1
+        ) {
+          const responsePayload = await fetchJSON({
+            url: endpointUrl,
+            headers: requestContext.headers,
+            params: {
+              ...baseParams,
+              page: currentPage,
+              pageSize: nextPageSize,
+              page_size: nextPageSize,
+              limit: nextPageSize,
+              perPage: nextPageSize,
+              per_page: nextPageSize,
+              size: nextPageSize,
+            },
+          });
+
+          const pageRows = normalizeListPayload(responsePayload);
+          let newRows = 0;
+
+          for (const row of pageRows) {
+            const rowId = String(
+              row?.id || row?.movementId || row?.movement_id || row?.transferReceiptId || row?.transfer_receipt_id || ''
+            ).trim();
+            if (!rowId) {
+              continue;
+            }
+
+            if (seenRowIds.has(rowId)) {
+              continue;
+            }
+
+            seenRowIds.add(rowId);
+            allRows.push(row);
+            newRows += 1;
+          }
+
+          const paginationState = resolvePaginationState(responsePayload);
+          const resolvedPage =
+            paginationState.page !== null ? paginationState.page : currentPage;
+          const resolvedPageSize = Math.max(
+            1,
+            paginationState.pageSize || pageRows.length || nextPageSize || 100
+          );
+          const reachedKnownLastPage =
+            paginationState.totalPages !== null && resolvedPage >= paginationState.totalPages;
+
+          if (pageRows.length === 0 || newRows === 0 || reachedKnownLastPage) {
+            break;
+          }
+
+          nextPageSize = resolvedPageSize;
+          currentPage = resolvedPage + 1;
+        }
+
+        return allRows;
       };
 
       const loadRowsWithFallback = async ({
