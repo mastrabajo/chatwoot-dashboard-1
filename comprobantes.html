@@ -1905,11 +1905,17 @@
 					return null;
 				};
 
+				const dataPayload =
+					payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data)
+						? payload.data
+						: null;
+
 				const meta =
-					(payload.meta && typeof payload.meta === 'object' ? payload.meta : null) ||
-					(payload.pagination && typeof payload.pagination === 'object'
+					(payload.meta && typeof payload.meta === 'object'
+						? payload.meta
+						: payload.pagination && typeof payload.pagination === 'object'
 						? payload.pagination
-						: null);
+						: dataPayload);
 
 				const links =
 					(payload.links && typeof payload.links === 'object' ? payload.links : null) ||
@@ -1917,9 +1923,13 @@
 
 				const page = pickNumeric(
 					payload.page,
+					payload.pageNumber,
+					payload.page_number,
 					payload.currentPage,
 					payload.current_page,
 					meta?.page,
+					meta?.pageNumber,
+					meta?.page_number,
 					meta?.currentPage,
 					meta?.current_page
 				);
@@ -1946,8 +1956,12 @@
 				const hasNextByFlag =
 					Boolean(payload.hasNextPage) ||
 					Boolean(payload.has_next_page) ||
+					Boolean(payload.hasNext) ||
+					Boolean(payload.has_next) ||
 					Boolean(meta?.hasNextPage) ||
-					Boolean(meta?.has_next_page);
+					Boolean(meta?.has_next_page) ||
+					Boolean(meta?.hasNext) ||
+					Boolean(meta?.has_next);
 
 				const hasNextByLinks = Boolean(
 					links?.next || links?.nextPage || links?.next_page
@@ -3156,6 +3170,10 @@
 						params: {
 							...baseParams,
 							page: currentPage,
+							pageNumber: currentPage,
+							page_number: currentPage,
+							currentPage: currentPage,
+							current_page: currentPage,
 							pageSize: nextPageSize,
 							page_size: nextPageSize,
 							limit: nextPageSize,
