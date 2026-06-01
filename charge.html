@@ -360,7 +360,7 @@
               <tr>
                 <th>Fecha</th>
                 <th>Tipo</th>
-                <th>Estado</th>
+                <th>Usuario</th>
                 <th>Monto</th>
                 <th>Moneda</th>
                 <th>Referencia</th>
@@ -531,6 +531,8 @@
           pageSize: 10,
         },
       };
+
+      const playerUsernameCache = new Map();
 
       const formatNumber = value =>
         new Intl.NumberFormat('es-UY', {
@@ -830,6 +832,167 @@
         }
 
         return amount < 0 ? 'outgoing' : 'incoming';
+      };
+
+      const resolveEntityPlayerId = entity => {
+        const playerIdCandidates = uniq([
+          entity?.playerId,
+          entity?.player_id,
+          entity?.playerUUID,
+          entity?.player_uuid,
+          entity?.player?.id,
+          entity?.player?.playerId,
+          entity?.player?.player_id,
+          entity?.metadata?.playerId,
+          entity?.metadata?.player_id,
+          entity?.metadata?.playerUUID,
+          entity?.metadata?.player_uuid,
+        ]).map(value => String(value || '').trim());
+
+        return playerIdCandidates.find(value => UUID_PATTERN.test(value)) || '';
+      };
+
+      const resolveEntityPlatformUsername = entity => {
+        const usernameCandidates = uniq([
+          entity?.platformUsername,
+          entity?.platform_username,
+          entity?.username,
+          entity?.userName,
+          entity?.appUser,
+          entity?.appuser,
+          entity?.user,
+          entity?.createdBy,
+          entity?.created_by,
+          entity?.player?.platformUsername,
+          entity?.player?.platform_username,
+          entity?.player?.username,
+          entity?.player?.userName,
+          entity?.metadata?.platformUsername,
+          entity?.metadata?.platform_username,
+          entity?.metadata?.username,
+          entity?.metadata?.userName,
+        ]).map(value => String(value || '').trim());
+
+        return usernameCandidates.find(Boolean) || '';
+      };
+
+      const fetchPlayerById = async ({ requestContext, playerId }) => {
+        const normalizedPlayerId = String(playerId || '').trim();
+        if (!UUID_PATTERN.test(normalizedPlayerId)) {
+          return null;
+        }
+
+        const responsePayload = await fetchJSON({
+          url: `${requestContext.apiHost}/v1/players/${encodeURIComponent(
+            normalizedPlayerId
+          )}`,
+          headers: requestContext.headers,
+        });
+
+        return unwrapObjectData(responsePayload);
+      };
+
+      const resolvePlatformUsernameFromPlayer = player =>
+        String(
+          player?.platformUsername ||
+            player?.platform_username ||
+            player?.username ||
+            player?.userName ||
+            ''
+        ).trim();
+
+      const fetchPlatformUsernameByPlayerId = async ({
+        requestContext,
+        playerId,
+      }) => {
+        const normalizedPlayerId = String(playerId || '').trim();
+        if (!UUID_PATTERN.test(normalizedPlayerId)) {
+          return '';
+        }
+
+        if (playerUsernameCache.has(normalizedPlayerId)) {
+          return String(playerUsernameCache.get(normalizedPlayerId) || '').trim();
+        }
+
+        try {
+          const player = await fetchPlayerById({
+            requestContext,
+            playerId: normalizedPlayerId,
+          });
+          const platformUsername = resolvePlatformUsernameFromPlayer(player);
+          playerUsernameCache.set(normalizedPlayerId, platformUsername);
+          return platformUsername;
+        } catch (error) {
+          debugLog(
+            '[Dashboard App] No se pudo obtener platformUsername por playerId:',
+            normalizedPlayerId,
+            error
+          );
+          playerUsernameCache.set(normalizedPlayerId, '');
+          return '';
+        }
+      };
+
+      const enrichRowsWithPlayerUsernames = async ({ rows, requestContext }) => {
+        const rowList = Array.isArray(rows) ? rows : [];
+        if (!rowList.length) {
+          return rowList;
+        }
+
+        for (const row of rowList) {
+          const playerId = String(row?.playerId || '').trim();
+          const username = String(row?.user || '').trim();
+          if (UUID_PATTERN.test(playerId) && username) {
+            playerUsernameCache.set(playerId, username);
+          }
+        }
+
+        const uniquePlayerIds = uniq(
+          rowList
+            .map(row => String(row?.playerId || '').trim())
+            .filter(playerId => UUID_PATTERN.test(playerId))
+        );
+
+        const unresolvedPlayerIds = uniquePlayerIds.filter(
+          playerId => !playerUsernameCache.has(playerId)
+        );
+
+        const batchSize = 10;
+        for (
+          let batchStart = 0;
+          batchStart < unresolvedPlayerIds.length;
+          batchStart += batchSize
+        ) {
+          const batch = unresolvedPlayerIds.slice(batchStart, batchStart + batchSize);
+
+          await Promise.all(
+            batch.map(playerId =>
+              fetchPlatformUsernameByPlayerId({ requestContext, playerId })
+            )
+          );
+        }
+
+        return rowList.map(row => {
+          const existingUsername = String(row?.user || '').trim();
+          if (existingUsername) {
+            return row;
+          }
+
+          const playerId = String(row?.playerId || '').trim();
+          if (!UUID_PATTERN.test(playerId)) {
+            return row;
+          }
+
+          const cachedUsername = String(playerUsernameCache.get(playerId) || '').trim();
+          if (!cachedUsername) {
+            return row;
+          }
+
+          return {
+            ...row,
+            user: cachedUsername,
+          };
+        });
       };
 
       const normalizeCurrencyCode = value => {
@@ -1979,11 +2142,16 @@
                 receipt?.updated_at
             );
 
+            const playerId = resolveEntityPlayerId(receipt);
+            const user = resolveEntityPlatformUsername(receipt);
+
             return {
               timestamp,
               dateLabel: formatDate(timestamp),
               type: direction === 'incoming' ? 'Incoming' : 'Outgoing',
               receiptId: String(receipt?.id || '').trim(),
+              playerId,
+              user,
               status:
                 receipt?.statusText || receipt?.status_text || receipt?.status || '-',
               amount: Math.abs(amount),
@@ -2026,6 +2194,9 @@
                 movement?.updated_at
             );
 
+            const playerId = resolveEntityPlayerId(movement);
+            const user = resolveEntityPlatformUsername(movement);
+
             return {
               timestamp,
               dateLabel: formatDate(timestamp),
@@ -2034,6 +2205,8 @@
               transferReceiptId: String(
                 movement?.transferReceiptId || movement?.transfer_receipt_id || ''
               ).trim(),
+              playerId,
+              user,
               status:
                 movement?.statusText || movement?.status_text || movement?.status || '-',
               amount: Math.abs(amount),
@@ -2416,6 +2589,17 @@
           movementError = error;
         }
 
+        if (transferRows.length || movementRows.length) {
+          transferRows = await enrichRowsWithPlayerUsernames({
+            rows: transferRows,
+            requestContext,
+          });
+          movementRows = await enrichRowsWithPlayerUsernames({
+            rows: movementRows,
+            requestContext,
+          });
+        }
+
         if (!transferError) {
           const reconciledPayload = reconcileTransferRowsWithOutgoingMovements({
             transferRows,
@@ -2552,7 +2736,7 @@
             const amountClass = isOutgoing ? 'bad' : 'good';
             const safeDate = escapeHTML(row.dateLabel);
             const safeType = escapeHTML(row.type);
-            const safeStatus = escapeHTML(row.status);
+            const safeUser = escapeHTML(String(row.user || '-'));
             const safeCurrency = escapeHTML(row.currency);
             const safeReference = escapeHTML(row.reference);
 
@@ -2560,7 +2744,7 @@
               '<tr>' +
               `<td>${safeDate}</td>` +
               `<td>${safeType}</td>` +
-              `<td><span class="status-pill">${safeStatus}</span></td>` +
+              `<td>${safeUser}</td>` +
               `<td class="amount ${amountClass}">${formatNumber(row.amount)}</td>` +
               `<td>${safeCurrency}</td>` +
               `<td>${safeReference}</td>` +
