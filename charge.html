@@ -933,12 +933,38 @@
         }
       };
 
+      // Utility: run worker over items with limited concurrency
+      const runWithConcurrency = async (items, worker, concurrency = 10) => {
+        const results = new Array(items.length);
+        let index = 0;
+
+        const runners = new Array(Math.min(concurrency, items.length)).fill(null).map(async () => {
+          while (true) {
+            const current = index++;
+            if (current >= items.length) {
+              break;
+            }
+
+            try {
+              results[current] = await worker(items[current], current);
+            } catch (err) {
+              // Store null for failures; worker may set cache itself
+              results[current] = null;
+            }
+          }
+        });
+
+        await Promise.all(runners);
+        return results;
+      };
+
       const enrichRowsWithPlayerUsernames = async ({ rows, requestContext }) => {
         const rowList = Array.isArray(rows) ? rows : [];
         if (!rowList.length) {
           return rowList;
         }
 
+        // Seed cache with already available usernames from payload
         for (const row of rowList) {
           const playerId = String(row?.playerId || '').trim();
           const username = String(row?.user || '').trim();
@@ -957,21 +983,16 @@
           playerId => !playerUsernameCache.has(playerId)
         );
 
-        const batchSize = 10;
-        for (
-          let batchStart = 0;
-          batchStart < unresolvedPlayerIds.length;
-          batchStart += batchSize
-        ) {
-          const batch = unresolvedPlayerIds.slice(batchStart, batchStart + batchSize);
-
-          await Promise.all(
-            batch.map(playerId =>
-              fetchPlatformUsernameByPlayerId({ requestContext, playerId })
-            )
+        if (unresolvedPlayerIds.length) {
+          // Fetch missing usernames with a concurrency-limited pool
+          await runWithConcurrency(
+            unresolvedPlayerIds,
+            async playerId => fetchPlatformUsernameByPlayerId({ requestContext, playerId }),
+            10
           );
         }
 
+        // Attach cached username when available
         return rowList.map(row => {
           const existingUsername = String(row?.user || '').trim();
           if (existingUsername) {
@@ -2559,34 +2580,40 @@
         let transferRows = [];
         let movementRows = [];
 
-        try {
-          const receipts = await fetchPlayerTransferReceipts({
+        // Fetch receipts and movements in parallel to reduce total wait time
+        const [receiptsResult, movementsResult] = await Promise.allSettled([
+          fetchPlayerTransferReceipts({
             playerId,
             requestContext,
             unfiltered: isGlobalContact,
-          });
-          transferRows = normalizeTransferReceiptRows(receipts);
-        } catch (error) {
-          if (isAuthError(error)) {
-            throw error;
-          }
+          }),
+          fetchPlayerBalanceMovements({
+            playerId,
+            requestContext,
+            unfiltered: isGlobalContact,
+          }),
+        ]);
 
-          transferError = error;
+        if (receiptsResult.status === 'fulfilled') {
+          try {
+            transferRows = normalizeTransferReceiptRows(receiptsResult.value);
+          } catch (err) {
+            transferError = err;
+          }
+        } else {
+          transferError = receiptsResult.reason;
+          if (isAuthError(transferError)) throw transferError;
         }
 
-        try {
-          const movements = await fetchPlayerBalanceMovements({
-            playerId,
-            requestContext,
-            unfiltered: isGlobalContact,
-          });
-          movementRows = normalizeBalanceMovementRows(movements);
-        } catch (error) {
-          if (isAuthError(error)) {
-            throw error;
+        if (movementsResult.status === 'fulfilled') {
+          try {
+            movementRows = normalizeBalanceMovementRows(movementsResult.value);
+          } catch (err) {
+            movementError = err;
           }
-
-          movementError = error;
+        } else {
+          movementError = movementsResult.reason;
+          if (isAuthError(movementError)) throw movementError;
         }
 
         if (transferRows.length || movementRows.length) {
